@@ -59,15 +59,9 @@ foreach ($app in $DemoApps) {
 
     Write-Host "Processing $fullRepo..." -ForegroundColor Cyan
 
-    # Check if repo already exists
-    $repoExists = $false
-    try {
-        gh repo view $fullRepo --json name 2>$null | Out-Null
-        $repoExists = $true
-    }
-    catch {
-        $repoExists = $false
-    }
+    # Check if repo already exists (use $LASTEXITCODE since gh is a native command)
+    $null = gh repo view $fullRepo --json name 2>&1
+    $repoExists = ($LASTEXITCODE -eq 0)
 
     if ($repoExists) {
         Write-Host "  Repo $fullRepo already exists, skipping creation." -ForegroundColor Yellow
@@ -76,34 +70,92 @@ foreach ($app in $DemoApps) {
         Write-Host "  Creating $fullRepo..." -ForegroundColor Green
         gh repo create $fullRepo `
             --public `
-            --description $app.Description `
-            --confirm
+            --description $app.Description
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  ERROR: Failed to create $fullRepo. Skipping." -ForegroundColor Red
+            continue
+        }
     }
 
-    # Set topics
+    # Check if repo is empty (size 0 means no commits) and push demo app content
+    $localAppDir = Join-Path $PSScriptRoot "..\finops-demo-app-$($app.Number)"
+    $repoSize = gh repo view $fullRepo --json diskUsage --jq '.diskUsage' 2>&1
+    $repoIsEmpty = ($LASTEXITCODE -ne 0) -or ([int]$repoSize -eq 0)
+
+    if ($repoIsEmpty -and (Test-Path $localAppDir)) {
+        Write-Host "  Repo is empty. Pushing demo app content from $localAppDir..." -ForegroundColor Green
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "finops-demo-app-$($app.Number)-$(Get-Random)"
+        try {
+            # Initialize a new git repo and point it at the remote
+            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+            Push-Location $tempDir
+            git init -b main 2>&1 | Out-Null
+            git remote add origin "https://github.com/$fullRepo.git"
+            # Copy all files (including hidden dirs like .github) using robocopy for accuracy
+            $resolvedAppDir = (Resolve-Path $localAppDir).Path
+            Get-ChildItem -Path $resolvedAppDir -Force | ForEach-Object {
+                if ($_.PSIsContainer) {
+                    Copy-Item -Path $_.FullName -Destination (Join-Path $tempDir $_.Name) -Recurse -Force
+                }
+                else {
+                    Copy-Item -Path $_.FullName -Destination $tempDir -Force
+                }
+            }
+            git add -A
+            git commit -m "feat: add FinOps demo app $($app.Number) with intentional $($app.Violations) violations AB#2118"
+            git push -u origin main
+            Pop-Location
+            Write-Host "  Demo app content pushed successfully." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  Warning: Could not push demo app content: $_" -ForegroundColor Yellow
+            if ((Get-Location).Path -ne $PSScriptRoot) { Pop-Location }
+        }
+        finally {
+            if (Test-Path $tempDir) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    elseif ($repoIsEmpty) {
+        Write-Host "  Repo is empty but no local content found at $localAppDir. Skipping push." -ForegroundColor Yellow
+        Write-Host "  Topics, code scanning, and secrets require at least one commit. Skipping..." -ForegroundColor Yellow
+        continue
+    }
+
+    # Set topics (requires repo to have at least one commit)
     Write-Host "  Setting topics..." -ForegroundColor Gray
-    $topicArgs = ($Topics | ForEach-Object { $_ }) -join ','
-    gh repo edit $fullRepo --add-topic $topicArgs
+    foreach ($topic in $Topics) {
+        gh repo edit $fullRepo --add-topic $topic 2>$null
+    }
 
     # Enable code scanning default setup
     Write-Host "  Enabling code scanning default setup..." -ForegroundColor Gray
     try {
-        gh api "repos/$fullRepo/code-scanning/default-setup" `
+        $result = gh api "repos/$fullRepo/code-scanning/default-setup" `
             -X PATCH `
-            -f state=configured 2>$null
-        Write-Host "  Code scanning enabled." -ForegroundColor Green
+            -f state=configured 2>&1
+        if ($result -match '"message"') {
+            Write-Host "  Could not enable code scanning (may require GHAS license or repo visibility change)." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "  Code scanning enabled." -ForegroundColor Green
+        }
     }
     catch {
         Write-Host "  Could not enable code scanning (may require GHAS license)." -ForegroundColor Yellow
     }
 
-    # Configure OIDC secrets
+    # Configure OIDC secrets (requires repo to have at least one commit)
     if ($ConfigureSecrets) {
         Write-Host "  Configuring OIDC secrets..." -ForegroundColor Gray
-        gh secret set AZURE_CLIENT_ID --repo $fullRepo --body $AzureClientId
-        gh secret set AZURE_TENANT_ID --repo $fullRepo --body $AzureTenantId
-        gh secret set AZURE_SUBSCRIPTION_ID --repo $fullRepo --body $AzureSubscriptionId
-        Write-Host "  OIDC secrets configured." -ForegroundColor Green
+        try {
+            gh secret set AZURE_CLIENT_ID --repo $fullRepo --body $AzureClientId
+            gh secret set AZURE_TENANT_ID --repo $fullRepo --body $AzureTenantId
+            gh secret set AZURE_SUBSCRIPTION_ID --repo $fullRepo --body $AzureSubscriptionId
+            Write-Host "  OIDC secrets configured." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  Warning: Could not configure secrets: $_" -ForegroundColor Yellow
+        }
     }
 }
 
