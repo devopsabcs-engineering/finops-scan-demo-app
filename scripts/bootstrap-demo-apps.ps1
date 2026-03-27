@@ -77,10 +77,10 @@ foreach ($app in $DemoApps) {
         }
     }
 
-    # Check if repo is empty (size 0 means no commits) and push demo app content
+    # Check if repo has any commits (diskUsage is unreliable — check for default branch commits instead)
     $localAppDir = Join-Path $PSScriptRoot "..\finops-demo-app-$($app.Number)"
-    $repoSize = gh repo view $fullRepo --json diskUsage --jq '.diskUsage' 2>&1
-    $repoIsEmpty = ($LASTEXITCODE -ne 0) -or ([int]$repoSize -eq 0)
+    $commitCount = gh api "repos/$fullRepo/commits?per_page=1" --jq 'length' 2>&1
+    $repoIsEmpty = ($LASTEXITCODE -ne 0) -or ($commitCount -eq '0') -or ([string]::IsNullOrWhiteSpace($commitCount))
 
     if ($repoIsEmpty -and (Test-Path $localAppDir)) {
         Write-Host "  Repo is empty. Pushing demo app content from $localAppDir..." -ForegroundColor Green
@@ -103,9 +103,15 @@ foreach ($app in $DemoApps) {
             }
             git add -A
             git commit -m "feat: add FinOps demo app $($app.Number) with intentional $($app.Violations) violations AB#2118"
-            git push -u origin main
-            Pop-Location
-            Write-Host "  Demo app content pushed successfully." -ForegroundColor Green
+            git push -u origin main 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Pop-Location
+                Write-Host "  ERROR: Push failed. Repo may already have content." -ForegroundColor Red
+            }
+            else {
+                Pop-Location
+                Write-Host "  Demo app content pushed successfully." -ForegroundColor Green
+            }
         }
         catch {
             Write-Host "  Warning: Could not push demo app content: $_" -ForegroundColor Yellow
