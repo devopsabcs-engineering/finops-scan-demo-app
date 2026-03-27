@@ -1,0 +1,49 @@
+name: FinOps Cost Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['infra/**']
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  cost-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Infracost baseline
+        run: |
+          infracost breakdown --path infra/ \
+            --format json --out-file infracost-base.json
+
+      - name: Run Infracost diff
+        run: |
+          infracost diff --path infra/ \
+            --format json --out-file infracost-output.json
+
+      - name: Post PR comment
+        run: |
+          infracost comment github \
+            --path infracost-output.json \
+            --repo ${{ github.repository }} \
+            --pull-request ${{ github.event.pull_request.number }} \
+            --github-token ${{ secrets.GITHUB_TOKEN }} \
+            --behavior update
+
+      - name: Convert to SARIF
+        run: python src/converters/infracost-to-sarif.py infracost-output.json reports/infracost.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/infracost.sarif
+          category: finops/infracost

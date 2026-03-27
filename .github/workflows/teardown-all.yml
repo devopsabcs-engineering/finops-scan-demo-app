@@ -1,0 +1,25 @@
+name: Teardown All Demo Apps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  confirm:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "Teardown approved"
+
+  teardown:
+    needs: confirm
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - name: Trigger teardown for app ${{ matrix.app }}
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          gh workflow run teardown.yml \
+            --repo devopsabcs-engineering/finops-demo-app-${{ matrix.app }}

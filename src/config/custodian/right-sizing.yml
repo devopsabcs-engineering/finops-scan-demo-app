@@ -1,0 +1,40 @@
+policies:
+  - name: detect-oversized-vms
+    resource: azure.vm
+    filters:
+      - type: value
+        key: properties.hardwareProfile.vmSize
+        op: in
+        value:
+          - Standard_D4s_v5
+          - Standard_D8s_v5
+          - Standard_D16s_v5
+          - Standard_E4s_v5
+          - Standard_E8s_v5
+          - Standard_E16s_v5
+      - type: value
+        key: tags.Environment
+        op: in
+        value:
+          - Development
+          - Dev
+          - Test
+
+  - name: detect-oversized-plans
+    resource: azure.appserviceplan
+    filters:
+      - type: value
+        key: sku.name
+        op: in
+        value:
+          - P1v3
+          - P2v3
+          - P3v3
+          - S3
+      - type: value
+        key: tags.Environment
+        op: in
+        value:
+          - Development
+          - Dev
+          - Test

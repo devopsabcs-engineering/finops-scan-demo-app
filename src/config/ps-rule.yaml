@@ -1,0 +1,18 @@
+configuration:
+  AZURE_RESOURCE_ALLOWED_LOCATIONS:
+    - eastus
+    - eastus2
+    - centralus
+
+rule:
+  include:
+    - Azure.Resource.UseTags
+    - Azure.VM.UseManagedDisks
+    - Azure.AppService.MinPlan
+    - Azure.SQL.MinTLS
+    - Azure.VM.DiskCaching
+    - Azure.Storage.UseReplication
+
+output:
+  format: Sarif
+  path: reports/psrule-results.sarif

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Demo App 001</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
+        h1 { color: #d32f2f; }
+        .violation { background: #ffebee; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>FinOps Demo App 001</h1>
+    <div class="violation">
+        <h2>Missing Tags Violation</h2>
+        <p>This application deploys Azure resources with <strong>zero governance tags</strong>.</p>
+        <p>Expected scanner findings: All resources missing CostCenter, Owner, Environment, Application, Department, Project, and ManagedBy tags.</p>
+    </div>
+</body>
+</html>

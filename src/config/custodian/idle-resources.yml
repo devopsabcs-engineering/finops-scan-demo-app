@@ -1,0 +1,15 @@
+policies:
+  - name: detect-no-autoshutdown
+    resource: azure.vm
+    filters:
+      - type: value
+        key: tags.Environment
+        op: in
+        value:
+          - Development
+          - Dev
+          - Test
+      - not:
+        - type: value
+          key: properties.provisioningState
+          value: Deallocated

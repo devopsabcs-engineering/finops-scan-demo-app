@@ -1,0 +1,9 @@
+compact: true
+framework:
+  - bicep
+  - arm
+output:
+  - sarif
+soft-fail: true
+skip-check:
+  - CKV_AZURE_999

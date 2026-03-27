@@ -1,0 +1,21 @@
+policies:
+  - name: find-orphaned-disks
+    resource: azure.disk
+    filters:
+      - type: value
+        key: properties.diskState
+        value: Unattached
+
+  - name: find-orphaned-nics
+    resource: azure.networkinterface
+    filters:
+      - type: value
+        key: properties.virtualMachine
+        value: null
+
+  - name: find-orphaned-public-ips
+    resource: azure.publicip
+    filters:
+      - type: value
+        key: properties.ipConfiguration
+        value: null

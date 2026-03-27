@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Demo App 005</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
+        h1 { color: #1565c0; }
+        .violation { background: #e3f2fd; border: 2px solid #1565c0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>FinOps Demo App 005</h1>
+    <div class="violation">
+        <h2>Redundant / Expensive Resources Violation</h2>
+        <p>This application deploys <strong>duplicate App Service Plans</strong> in expensive non-approved regions.</p>
+        <p>Two S3 plans (westeurope + southeastasia) and GRS storage where LRS would suffice — wasting ~$450/month.</p>
+    </div>
+</body>
+</html>

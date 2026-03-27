@@ -1,0 +1,123 @@
+name: FinOps Scan
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Weekly Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+
+jobs:
+  psrule-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: devopsabcs-engineering/finops-demo-app-${{ matrix.app }}
+          token: ${{ secrets.ORG_ADMIN_TOKEN }}
+          path: target-app
+      - name: Run PSRule
+        uses: microsoft/ps-rule@v2.9.0
+        with:
+          inputPath: target-app/infra/
+          modules: PSRule.Rules.Azure
+          outputFormat: Sarif
+          outputPath: reports/psrule-${{ matrix.app }}.sarif
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarif-psrule-${{ matrix.app }}
+          path: reports/psrule-${{ matrix.app }}.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/psrule-${{ matrix.app }}.sarif
+          category: finops/psrule/${{ matrix.app }}
+
+  checkov-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: devopsabcs-engineering/finops-demo-app-${{ matrix.app }}
+          token: ${{ secrets.ORG_ADMIN_TOKEN }}
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/
+          output_format: sarif
+          output_file_path: reports/
+          soft_fail: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarif-checkov-${{ matrix.app }}
+          path: reports/results_sarif.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/results_sarif.sarif
+          category: finops/checkov/${{ matrix.app }}
+
+  custodian-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Install Cloud Custodian
+        run: pip install c7n c7n-azure
+      - name: Run Cloud Custodian
+        run: |
+          custodian run -s output/ src/config/custodian/ --cache-period 0
+      - name: Convert to SARIF
+        run: python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sarif-custodian-${{ matrix.app }}
+          path: reports/custodian-${{ matrix.app }}.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/custodian-${{ matrix.app }}.sarif
+          category: finops/custodian/${{ matrix.app }}
+
+  cross-repo-upload:
+    needs: [psrule-scan, checkov-scan, custodian-scan]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sarif-*-${{ matrix.app }}
+          merge-multiple: true
+          path: reports/
+      - name: Upload SARIF to target repo
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          for sarif_file in reports/*.sarif; do
+            if [ ! -f "$sarif_file" ]; then continue; fi
+            SARIF_CONTENT=$(gzip -c "$sarif_file" | base64 -w0)
+            COMMIT_SHA=$(gh api repos/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/commits/main --jq '.sha')
+            gh api \
+              --method POST \
+              repos/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/code-scanning/sarifs \
+              -f "commit_sha=$COMMIT_SHA" \
+              -f "ref=refs/heads/main" \
+              -f "sarif=$SARIF_CONTENT"
+            echo "Uploaded $(basename $sarif_file) to finops-demo-app-${{ matrix.app }}"
+          done

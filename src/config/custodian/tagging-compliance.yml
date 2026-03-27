@@ -1,0 +1,12 @@
+policies:
+  - name: check-required-tags
+    resource: azure.resourcegroup
+    filters:
+      - or:
+        - "tag:CostCenter": absent
+        - "tag:Owner": absent
+        - "tag:Environment": absent
+        - "tag:Application": absent
+        - "tag:Department": absent
+        - "tag:Project": absent
+        - "tag:ManagedBy": absent
