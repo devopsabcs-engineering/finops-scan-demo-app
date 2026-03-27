@@ -54,7 +54,64 @@ graph TD
 - [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) v7.3+
 - Azure subscription with Contributor access
 - GitHub organization admin access to `devopsabcs-engineering`
-- [Infracost](https://www.infracost.io/docs/) API key (free tier available)
+- [Infracost](https://www.infracost.io/docs/) API key (free tier available — see [Secrets Configuration](#secrets-configuration))
+
+## Secrets Configuration
+
+### Infracost API Key
+
+The Infracost API key is required for the PR cost gate workflow (`finops-cost-gate.yml`) to estimate infrastructure costs from Bicep templates. The free tier supports up to 1,000 cost estimates per month.
+
+**Option A: CLI login (recommended)**
+
+```bash
+# Install Infracost CLI
+# macOS/Linux:
+curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+# Windows (winget):
+winget install Infracost.Infracost
+
+# Authenticate — opens browser to sign in and saves the key locally
+infracost auth login
+
+# Retrieve your API key
+infracost configure get api_key
+```
+
+**Option B: Infracost Cloud dashboard**
+
+1. Sign up at [infracost.io/pricing](https://www.infracost.io/pricing/) (free tier available).
+2. Navigate to **Org Settings > API Keys** in the Infracost Cloud dashboard.
+3. Copy the API key.
+
+**Configure as GitHub secret:**
+
+```powershell
+# Set the secret on the scanner repo
+gh secret set INFRACOST_API_KEY --repo devopsabcs-engineering/finops-scan-demo-app --body "<your-api-key>"
+```
+
+The bootstrap script (`scripts/bootstrap-demo-apps.ps1`) prompts for this value and configures it automatically.
+
+### OIDC Secrets (Azure)
+
+The following secrets are required on each demo app repo for Azure deployments via OIDC federation:
+
+| Secret | Description | Source |
+| ------ | ----------- | ------ |
+| `AZURE_CLIENT_ID` | Azure AD app registration client ID | `scripts/setup-oidc.ps1` output |
+| `AZURE_TENANT_ID` | Azure AD tenant ID | Azure portal or `az account show` |
+| `AZURE_SUBSCRIPTION_ID` | Target Azure subscription ID | Azure portal or `az account show` |
+
+Run `scripts/setup-oidc.ps1` to create the Azure AD app registration and federated credential, then use the bootstrap script to set these secrets on all repos.
+
+### Cross-Repo Access
+
+| Secret | Description | Scope |
+| ------ | ----------- | ----- |
+| `ORG_ADMIN_TOKEN` | GitHub PAT with `repo`, `workflow`, and `security_events` scopes | Scanner repo only |
+
+Required for the scan workflow to check out demo app repos and upload SARIF results to their Security tabs.
 
 ## Quick Start
 
