@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# copilot tracking files
+.copilot-tracking/
+
 # User-specific files
 *.rsuser
 *.suo
