@@ -1,0 +1,21 @@
+name: Deploy All Demo Apps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        app: ['001', '002', '003', '004', '005']
+    steps:
+      - name: Trigger deploy for app ${{ matrix.app }}
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          gh workflow run deploy.yml \
+            --repo devopsabcs-engineering/finops-demo-app-${{ matrix.app }}
+      - name: Wait for deployment
+        run: sleep 60

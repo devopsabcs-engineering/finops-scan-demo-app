@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinOps Demo App 003</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
+        h1 { color: #f57c00; }
+        .violation { background: #fff8e1; border: 2px solid #f57c00; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>FinOps Demo App 003</h1>
+    <div class="violation">
+        <h2>Orphaned Resources Violation</h2>
+        <p>This application deploys <strong>orphaned Azure resources</strong> not attached to any workload.</p>
+        <p>Unattached Public IP, NIC, Managed Disk (128GB Premium), and NSG wasting ~$23/month.</p>
+    </div>
+</body>
+</html>
