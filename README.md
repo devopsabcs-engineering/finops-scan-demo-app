@@ -105,13 +105,32 @@ The following secrets are required on each demo app repo for Azure deployments v
 
 Run `scripts/setup-oidc.ps1` to create the Azure AD app registration and federated credential, then use the bootstrap script to set these secrets on all repos.
 
-### Cross-Repo Access
+### Cross-Repo Access (`ORG_ADMIN_TOKEN`)
 
-| Secret | Description | Scope |
-| ------ | ----------- | ----- |
-| `ORG_ADMIN_TOKEN` | GitHub PAT with `repo`, `workflow`, and `security_events` scopes | Scanner repo only |
+The scanner repo needs a GitHub Personal Access Token (classic) to reach into the 5 demo app repos. The demo app repos themselves do **not** need this token.
 
-Required for the scan workflow to check out demo app repos and upload SARIF results to their Security tabs.
+| Secret | Scopes Required | Set On |
+| ------ | --------------- | ------ |
+| `ORG_ADMIN_TOKEN` | `repo`, `workflow`, `security_events` | `finops-scan-demo-app` only |
+
+**What uses it:**
+
+- `finops-scan.yml` — checks out demo app repos and uploads SARIF to their Security tabs
+- `deploy-all.yml` — triggers `deploy.yml` in each demo app repo
+- `teardown-all.yml` — triggers `teardown.yml` in each demo app repo
+
+**How to create it:**
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) → **Generate new token (classic)**.
+2. Set a note (e.g., `finops-scanner-org-admin-token`) and expiration (90 days recommended).
+3. Select these scopes: **repo**, **workflow**, **security_events**.
+4. Click **Generate token** and copy it immediately.
+5. Save it as a secret on the scanner repo:
+
+```powershell
+gh secret set ORG_ADMIN_TOKEN --repo devopsabcs-engineering/finops-scan-demo-app
+# Paste the token when prompted
+```
 
 ## Quick Start
 
