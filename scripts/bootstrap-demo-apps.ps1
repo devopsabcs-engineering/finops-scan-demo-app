@@ -60,6 +60,25 @@ if (-not $OrgAdminToken) {
     $OrgAdminToken = Read-Host -Prompt 'Enter ORG_ADMIN_TOKEN for wiki push (or press Enter to skip)'
 }
 
+# Run OIDC setup if Azure CLI is logged in and secrets are being configured
+if ($ConfigureSecrets) {
+    $null = az account show 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "`nAzure CLI is logged in. Running OIDC federation setup..." -ForegroundColor Cyan
+        $oidcScript = Join-Path $PSScriptRoot 'setup-oidc.ps1'
+        if (Test-Path $oidcScript) {
+            & $oidcScript
+        }
+        else {
+            Write-Host "  setup-oidc.ps1 not found at $oidcScript, skipping OIDC setup." -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host "`nAzure CLI not logged in. Skipping OIDC setup." -ForegroundColor Yellow
+        Write-Host "  Run 'az login' then './scripts/setup-oidc.ps1' manually to configure federated credentials." -ForegroundColor Yellow
+    }
+}
+
 foreach ($app in $DemoApps) {
     $repoName = "finops-demo-app-$($app.Number)"
     $fullRepo = "$Org/$repoName"
