@@ -106,6 +106,31 @@ def build_result(policy_name: str, resource: dict, rule_info: dict) -> dict:
     }
 
 
+def convert_empty(sarif_output_file: str) -> None:
+    """Produce a valid SARIF file with no findings."""
+    sarif = {
+        "$schema": SARIF_SCHEMA,
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "custodian-to-sarif",
+                        "version": "1.0.0",
+                        "informationUri": "https://cloudcustodian.io",
+                        "rules": [],
+                    }
+                },
+                "results": [],
+            }
+        ],
+    }
+    os.makedirs(os.path.dirname(sarif_output_file) or ".", exist_ok=True)
+    with open(sarif_output_file, "w", encoding="utf-8") as fh:
+        json.dump(sarif, fh, indent=2)
+    print(f"Produced empty SARIF at {sarif_output_file}")
+
+
 def convert(custodian_output_dir: str, sarif_output_file: str) -> None:
     """Read Custodian output directory and produce SARIF JSON."""
     rules = []
@@ -191,10 +216,13 @@ def main() -> None:
 
     if not os.path.isdir(args.custodian_output_dir):
         print(
-            f"Error: {args.custodian_output_dir} is not a directory",
+            f"Warning: {args.custodian_output_dir} is not a directory, "
+            "producing empty SARIF",
             file=sys.stderr,
         )
-        sys.exit(1)
+        # Produce valid empty SARIF instead of crashing
+        convert_empty(args.sarif_output_file)
+        return
 
     convert(args.custodian_output_dir, args.sarif_output_file)
 

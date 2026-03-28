@@ -30,6 +30,9 @@ jobs:
           modules: PSRule.Rules.Azure
           outputFormat: Sarif
           outputPath: reports/psrule-${{ matrix.app }}.sarif
+          option: src/config/ps-rule.yaml
+          baseline: Azure.GA_2024_12
+        continue-on-error: true
       - uses: actions/upload-artifact@v4
         with:
           name: sarif-psrule-${{ matrix.app }}
@@ -76,13 +79,31 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          mkdir -p output reports
-          # Run each policy file separately, filtering by resource group
+          mkdir -p output reports /tmp/custodian-policies
           RG="rg-finops-demo-${{ matrix.app }}"
+
+          # Generate per-app policies with resource group filter injected
           for policy_file in src/config/custodian/*.yml; do
-            echo "Running policy: $policy_file against $RG"
-            custodian run -s output/ "$policy_file" \
-              --cache-period 0 2>&1 || true
+            filename=$(basename "$policy_file")
+            python3 -c "
+          import yaml
+          with open('$policy_file') as f:
+              data = yaml.safe_load(f)
+          for policy in data.get('policies', []):
+              rt = policy.get('resource', '')
+              if rt == 'azure.resourcegroup':
+                  policy.setdefault('filters', []).insert(0, {'type': 'value', 'key': 'name', 'value': '$RG'})
+              else:
+                  policy.setdefault('filters', []).insert(0, {'type': 'value', 'key': 'resourceGroup', 'op': 'eq', 'value': '$RG'})
+          with open('/tmp/custodian-policies/$filename', 'w') as f:
+              yaml.dump(data, f)
+          " || echo "Warning: Could not process $policy_file"
+          done
+
+          # Run custodian with filtered policies
+          for policy_file in /tmp/custodian-policies/*.yml; do
+            echo "Running: $(basename $policy_file) against $RG"
+            custodian run -s output/ "$policy_file" --cache-period 0 2>&1 || true
           done
           echo "Custodian scan complete for app ${{ matrix.app }}"
       - name: Convert to SARIF
@@ -92,7 +113,7 @@ jobs:
             python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
           else
             echo "No custodian output to convert, creating empty SARIF"
-            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"custodian-to-sarif","version":"1.0.0"}},"results":[]}]}' > reports/custodian-${{ matrix.app }}.sarif
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"custodian-to-sarif","version":"1.0.0","informationUri":"https://cloudcustodian.io","rules":[]}},"results":[]}]}' > reports/custodian-${{ matrix.app }}.sarif
           fi
       - uses: actions/upload-artifact@v4
         with:

@@ -1,17 +1,25 @@
 configuration:
   AZURE_RESOURCE_ALLOWED_LOCATIONS:
+    - canadacentral
     - eastus
     - eastus2
-    - centralus
+  # Expand Bicep files for analysis
+  AZURE_BICEP_FILE_EXPANSION: true
+  AZURE_BICEP_FILE_EXPANSION_TIMEOUT: 30
 
+# Use the GA baseline which includes cost-related rules
 rule:
-  include:
-    - Azure.Resource.UseTags
-    - Azure.VM.UseManagedDisks
-    - Azure.AppService.MinPlan
-    - Azure.SQL.MinTLS
-    - Azure.VM.DiskCaching
-    - Azure.Storage.UseReplication
+  includeLocal: true
+
+binding:
+  targetType:
+    - type
+    - resourceType
+
+input:
+  pathIgnore:
+    - '*.md'
+    - '.github/**'
 
 output:
   format: Sarif
