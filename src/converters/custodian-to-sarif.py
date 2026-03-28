@@ -138,11 +138,12 @@ def convert_empty(sarif_output_file: str) -> None:
     print(f"Produced empty SARIF at {sarif_output_file}")
 
 
-def convert(custodian_output_dir: str, sarif_output_file: str) -> None:
+def convert(custodian_output_dir: str, sarif_output_file: str, resource_group: str = None) -> None:
     """Read Custodian output directory and produce SARIF JSON."""
     rules = []
     results = []
     seen_rules = set()
+    filtered_count = 0
 
     for policy_dir in sorted(os.listdir(custodian_output_dir)):
         policy_path = os.path.join(custodian_output_dir, policy_dir)
@@ -159,6 +160,18 @@ def convert(custodian_output_dir: str, sarif_output_file: str) -> None:
             except json.JSONDecodeError:
                 print(f"Warning: could not parse {resources_file}", file=sys.stderr)
                 continue
+
+        # Filter by resource group if specified
+        if resource_group:
+            rg_lower = resource_group.lower()
+            original_count = len(resources)
+            resources = [
+                r for r in resources
+                if rg_lower in str(r.get("id", "")).lower()
+                or r.get("resourceGroup", "").lower() == rg_lower
+                or r.get("name", "").lower() == rg_lower  # for resourcegroup type
+            ]
+            filtered_count += original_count - len(resources)
 
         rule_info = POLICY_RULE_MAP.get(policy_dir)
         if rule_info is None:
@@ -204,6 +217,7 @@ def convert(custodian_output_dir: str, sarif_output_file: str) -> None:
     print(
         f"Converted {len(results)} findings from "
         f"{len(seen_rules)} rules to {sarif_output_file}"
+        + (f" (filtered out {filtered_count} from other RGs)" if resource_group else "")
     )
 
 
@@ -219,6 +233,11 @@ def main() -> None:
         "sarif_output_file",
         help="Path for the generated SARIF JSON file",
     )
+    parser.add_argument(
+        "--resource-group", "-g",
+        help="Filter results to only include resources in this resource group",
+        default=None,
+    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.custodian_output_dir):
@@ -227,11 +246,10 @@ def main() -> None:
             "producing empty SARIF",
             file=sys.stderr,
         )
-        # Produce valid empty SARIF instead of crashing
         convert_empty(args.sarif_output_file)
         return
 
-    convert(args.custodian_output_dir, args.sarif_output_file)
+    convert(args.custodian_output_dir, args.sarif_output_file, args.resource_group)
 
 
 if __name__ == "__main__":

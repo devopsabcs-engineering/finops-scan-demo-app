@@ -99,7 +99,8 @@ jobs:
         run: |
           mkdir -p reports
           if [ -d "output/" ] && [ "$(ls -A output/)" ]; then
-            python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
+            python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif \
+              --resource-group "rg-finops-demo-${{ matrix.app }}"
           else
             echo "No custodian output to convert, creating empty SARIF"
             echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"custodian-to-sarif","version":"1.0.0","informationUri":"https://cloudcustodian.io","rules":[]}},"results":[]}]}' > reports/custodian-${{ matrix.app }}.sarif
