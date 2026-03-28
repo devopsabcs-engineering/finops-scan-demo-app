@@ -201,6 +201,8 @@ foreach ($app in $DemoApps) {
     # Initialize wiki (required before workflows can push to it)
     if ($OrgAdminToken) {
         Write-Host "  Initializing wiki..." -ForegroundColor Gray
+        # Enable wiki feature on the repo first
+        gh repo edit $fullRepo --enable-wiki 2>$null
         $wikiUrl = "https://x-access-token:${OrgAdminToken}@github.com/${fullRepo}.wiki.git"
         $wikiTempDir = Join-Path ([System.IO.Path]::GetTempPath()) "wiki-init-$($app.Number)-$(Get-Random)"
         try {
@@ -257,6 +259,7 @@ if ($OrgAdminToken) {
 
     # Initialize scanner repo wiki
     Write-Host "Initializing scanner repo wiki..." -ForegroundColor Cyan
+    gh repo edit $scannerFullRepo --enable-wiki 2>$null
     $scannerWikiUrl = "https://x-access-token:${OrgAdminToken}@github.com/${scannerFullRepo}.wiki.git"
     $scannerWikiDir = Join-Path ([System.IO.Path]::GetTempPath()) "wiki-scanner-$(Get-Random)"
     try {
