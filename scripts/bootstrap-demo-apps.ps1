@@ -171,6 +171,16 @@ foreach ($app in $DemoApps) {
         }
     }
 
+    # Create 'production' environment (required for teardown workflow approval gate)
+    Write-Host "  Creating 'production' environment..." -ForegroundColor Gray
+    $null = gh api "repos/$fullRepo/environments/production" --method PUT 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "    Environment created." -ForegroundColor Green
+    }
+    else {
+        Write-Host "    Could not create environment (may need admin access)." -ForegroundColor Yellow
+    }
+
     if ($OrgAdminToken) {
         Write-Host "  Configuring ORG_ADMIN_TOKEN for wiki push..." -ForegroundColor Gray
         try {

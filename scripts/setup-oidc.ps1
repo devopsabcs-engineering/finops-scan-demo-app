@@ -25,13 +25,19 @@ $Issuer = 'https://token.actions.githubusercontent.com'
 $Audience = 'api://AzureADTokenExchange'
 
 # All repos that need federated credentials (scanner + 5 demo apps)
+# Each repo gets a main branch credential; demo apps also get a production environment credential for teardown
 $FederatedRepos = @(
-    @{ Repo = $ScannerRepo;          CredName = 'github-actions-scanner-main';  Description = "GitHub Actions OIDC for $RepoOwner/$ScannerRepo main branch" }
-    @{ Repo = 'finops-demo-app-001'; CredName = 'github-actions-demo-001-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-001 main branch" }
-    @{ Repo = 'finops-demo-app-002'; CredName = 'github-actions-demo-002-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-002 main branch" }
-    @{ Repo = 'finops-demo-app-003'; CredName = 'github-actions-demo-003-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-003 main branch" }
-    @{ Repo = 'finops-demo-app-004'; CredName = 'github-actions-demo-004-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-004 main branch" }
-    @{ Repo = 'finops-demo-app-005'; CredName = 'github-actions-demo-005-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-005 main branch" }
+    @{ Repo = $ScannerRepo;          CredName = 'github-actions-scanner-main';      Subject = "repo:${RepoOwner}/${ScannerRepo}:ref:refs/heads/main";                  Description = "OIDC for $RepoOwner/$ScannerRepo main branch" }
+    @{ Repo = 'finops-demo-app-001'; CredName = 'github-actions-demo-001-main';     Subject = "repo:${RepoOwner}/finops-demo-app-001:ref:refs/heads/main";             Description = "OIDC for $RepoOwner/finops-demo-app-001 main branch" }
+    @{ Repo = 'finops-demo-app-001'; CredName = 'github-actions-demo-001-prod-env'; Subject = "repo:${RepoOwner}/finops-demo-app-001:environment:production";          Description = "OIDC for $RepoOwner/finops-demo-app-001 production environment" }
+    @{ Repo = 'finops-demo-app-002'; CredName = 'github-actions-demo-002-main';     Subject = "repo:${RepoOwner}/finops-demo-app-002:ref:refs/heads/main";             Description = "OIDC for $RepoOwner/finops-demo-app-002 main branch" }
+    @{ Repo = 'finops-demo-app-002'; CredName = 'github-actions-demo-002-prod-env'; Subject = "repo:${RepoOwner}/finops-demo-app-002:environment:production";          Description = "OIDC for $RepoOwner/finops-demo-app-002 production environment" }
+    @{ Repo = 'finops-demo-app-003'; CredName = 'github-actions-demo-003-main';     Subject = "repo:${RepoOwner}/finops-demo-app-003:ref:refs/heads/main";             Description = "OIDC for $RepoOwner/finops-demo-app-003 main branch" }
+    @{ Repo = 'finops-demo-app-003'; CredName = 'github-actions-demo-003-prod-env'; Subject = "repo:${RepoOwner}/finops-demo-app-003:environment:production";          Description = "OIDC for $RepoOwner/finops-demo-app-003 production environment" }
+    @{ Repo = 'finops-demo-app-004'; CredName = 'github-actions-demo-004-main';     Subject = "repo:${RepoOwner}/finops-demo-app-004:ref:refs/heads/main";             Description = "OIDC for $RepoOwner/finops-demo-app-004 main branch" }
+    @{ Repo = 'finops-demo-app-004'; CredName = 'github-actions-demo-004-prod-env'; Subject = "repo:${RepoOwner}/finops-demo-app-004:environment:production";          Description = "OIDC for $RepoOwner/finops-demo-app-004 production environment" }
+    @{ Repo = 'finops-demo-app-005'; CredName = 'github-actions-demo-005-main';     Subject = "repo:${RepoOwner}/finops-demo-app-005:ref:refs/heads/main";             Description = "OIDC for $RepoOwner/finops-demo-app-005 main branch" }
+    @{ Repo = 'finops-demo-app-005'; CredName = 'github-actions-demo-005-prod-env'; Subject = "repo:${RepoOwner}/finops-demo-app-005:environment:production";          Description = "OIDC for $RepoOwner/finops-demo-app-005 production environment" }
 )
 
 Write-Host '=== OIDC Federation Setup ===' -ForegroundColor Cyan
@@ -53,10 +59,10 @@ if ($existingApp) {
 }
 
 # Step 2: Create or verify federated credentials for all repos
-Write-Host "`n[2/5] Configuring federated credentials for $($FederatedRepos.Count) repos..."
+Write-Host "`n[2/5] Configuring federated credentials for $($FederatedRepos.Count) entries..."
 foreach ($fedRepo in $FederatedRepos) {
     $credName = $fedRepo.CredName
-    $subject = "repo:${RepoOwner}/$($fedRepo.Repo):ref:refs/heads/main"
+    $subject = $fedRepo.Subject
     Write-Host "  Checking credential '$credName' (subject: $subject)..."
 
     $existingCred = az ad app federated-credential list --id $objectId --query "[?name=='$credName']" -o json 2>$null | ConvertFrom-Json
