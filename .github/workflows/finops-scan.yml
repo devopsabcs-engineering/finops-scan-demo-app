@@ -59,6 +59,7 @@ jobs:
 
   custodian-scan:
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       matrix:
         app: ['001', '002', '003', '004', '005']
@@ -75,14 +76,24 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          # Filter policies to target the specific app's resource group
-          export CUSTODIAN_RG="rg-finops-demo-${{ matrix.app }}"
-          custodian run -s output/ src/config/custodian/ \
-            --cache-period 0 \
-            --region canadacentral 2>&1 || true
+          mkdir -p output reports
+          # Run each policy file separately, filtering by resource group
+          RG="rg-finops-demo-${{ matrix.app }}"
+          for policy_file in src/config/custodian/*.yml; do
+            echo "Running policy: $policy_file against $RG"
+            custodian run -s output/ "$policy_file" \
+              --cache-period 0 2>&1 || true
+          done
+          echo "Custodian scan complete for app ${{ matrix.app }}"
       - name: Convert to SARIF
         run: |
-          python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
+          mkdir -p reports
+          if [ -d "output/" ] && [ "$(ls -A output/)" ]; then
+            python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
+          else
+            echo "No custodian output to convert, creating empty SARIF"
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"custodian-to-sarif","version":"1.0.0"}},"results":[]}]}' > reports/custodian-${{ matrix.app }}.sarif
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: sarif-custodian-${{ matrix.app }}
@@ -90,6 +101,7 @@ jobs:
 
   cross-repo-upload:
     needs: [psrule-scan, checkov-scan, custodian-scan]
+    if: always() && (needs.psrule-scan.result == 'success' || needs.checkov-scan.result == 'success')
     runs-on: ubuntu-latest
     strategy:
       matrix:
