@@ -91,3 +91,5 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 
 output webAppUrlEurope string = 'https://${webAppEurope.properties.defaultHostName}'
 output webAppUrlAsia string = 'https://${webAppAsia.properties.defaultHostName}'
+output webAppNameEurope string = webAppEurope.name
+output webAppNameAsia string = webAppAsia.name

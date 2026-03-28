@@ -33,6 +33,15 @@ jobs:
           resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: infra/main.bicep
 
+      - name: Deploy app content
+        run: |
+          cd src && zip -r ../app.zip . && cd ..
+          az webapp deploy --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name "${{ steps.deploy.outputs.webAppNameEurope }}" --src-path app.zip --type zip
+          az webapp deploy --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name "${{ steps.deploy.outputs.webAppNameAsia }}" --src-path app.zip --type zip
+          echo "Content deployed to both web apps"
+
       - name: Get deployment URLs
         id: get-url
         run: |
