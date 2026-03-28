@@ -233,6 +233,15 @@ if ($InfracostApiKey) {
     Write-Host "INFRACOST_API_KEY configured." -ForegroundColor Green
 }
 
+# Configure OIDC secrets on the scanner repo (needed for Cloud Custodian Azure access)
+if ($ConfigureSecrets) {
+    Write-Host "Configuring OIDC secrets on $scannerFullRepo..." -ForegroundColor Cyan
+    gh secret set AZURE_CLIENT_ID --repo $scannerFullRepo --body $AzureClientId
+    gh secret set AZURE_TENANT_ID --repo $scannerFullRepo --body $AzureTenantId
+    gh secret set AZURE_SUBSCRIPTION_ID --repo $scannerFullRepo --body $AzureSubscriptionId
+    Write-Host "OIDC secrets configured on scanner repo." -ForegroundColor Green
+}
+
 # Configure ORG_ADMIN_TOKEN on the scanner repo
 if ($OrgAdminToken) {
     Write-Host "Configuring ORG_ADMIN_TOKEN on $scannerFullRepo..." -ForegroundColor Cyan
