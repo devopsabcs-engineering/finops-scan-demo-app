@@ -3,6 +3,9 @@ name: Deploy All Demo Apps
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -17,5 +20,133 @@ jobs:
         run: |
           gh workflow run deploy.yml \
             --repo devopsabcs-engineering/finops-demo-app-${{ matrix.app }}
-      - name: Wait for deployment
-        run: sleep 60
+          echo "Triggered deploy for finops-demo-app-${{ matrix.app }}"
+
+      - name: Wait for deployment to complete
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          REPO="devopsabcs-engineering/finops-demo-app-${{ matrix.app }}"
+          echo "Waiting for deploy workflow in $REPO..."
+          sleep 10
+          # Find the latest run
+          for i in $(seq 1 30); do
+            RUN_ID=$(gh run list --repo "$REPO" --workflow deploy.yml --limit 1 --json databaseId,status --jq '.[0].databaseId')
+            STATUS=$(gh run list --repo "$REPO" --workflow deploy.yml --limit 1 --json status --jq '.[0].status')
+            if [ "$STATUS" = "completed" ]; then
+              CONCLUSION=$(gh run list --repo "$REPO" --workflow deploy.yml --limit 1 --json conclusion --jq '.[0].conclusion')
+              echo "Run $RUN_ID completed: $CONCLUSION"
+              echo "result=$CONCLUSION" >> "$GITHUB_OUTPUT"
+              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            echo "  Status: $STATUS (attempt $i/30)..."
+            sleep 20
+          done
+
+      - name: Write deployment summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ### finops-demo-app-${{ matrix.app }}
+          - **Repo:** [finops-demo-app-${{ matrix.app }}](https://github.com/devopsabcs-engineering/finops-demo-app-${{ matrix.app }})
+          - **Wiki:** [Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/wiki/Deployment)
+          - **Actions:** [Workflow Runs](https://github.com/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/actions)
+          EOF
+
+  summary:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build central deployment summary
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          echo "## 🚀 All Demo Apps Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| App | Status | Wiki | Actions |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          for APP in 001 002 003 004 005; do
+            REPO="devopsabcs-engineering/finops-demo-app-${APP}"
+            CONCLUSION=$(gh run list --repo "$REPO" --workflow deploy.yml --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null || echo "unknown")
+            if [ "$CONCLUSION" = "success" ]; then
+              STATUS="✅ Success"
+            elif [ "$CONCLUSION" = "failure" ]; then
+              STATUS="❌ Failed"
+            else
+              STATUS="⏳ $CONCLUSION"
+            fi
+            echo "| **${APP}** | ${STATUS} | [Wiki](https://github.com/${REPO}/wiki/Deployment) | [Runs](https://github.com/${REPO}/actions) |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Deployed: $(date -u '+%Y-%m-%d %H:%M UTC')_" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update scanner wiki with deployment status
+        env:
+          WIKI_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          set -e
+          WIKI_REPO="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          BUILD_ID="${{ github.run_id }}"
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          DEPLOY_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+          git clone --depth 1 "$WIKI_REPO" wiki || {
+            mkdir wiki && cd wiki && git init -b master && git remote add origin "$WIKI_REPO"
+            cd ..
+          }
+
+          # Build deployment status table
+          TABLE="| App | Violation | Status | Site | Wiki |\n|-----|-----------|--------|------|------|\n"
+          for APP in 001 002 003 004 005; do
+            REPO="devopsabcs-engineering/finops-demo-app-${APP}"
+            CONCLUSION=$(gh run list --repo "$REPO" --workflow deploy.yml --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null || echo "unknown")
+            if [ "$CONCLUSION" = "success" ]; then
+              STATUS="✅"
+            else
+              STATUS="❌"
+            fi
+            case "$APP" in
+              001) VIOLATION="Missing Tags" ;;
+              002) VIOLATION="Oversized Resources" ;;
+              003) VIOLATION="Orphaned Resources" ;;
+              004) VIOLATION="No Auto-Shutdown" ;;
+              005) VIOLATION="Redundant Resources" ;;
+            esac
+            WIKI_LINK="[Deployment](https://github.com/${REPO}/wiki/Deployment)"
+            TABLE="${TABLE}| [${APP}](https://github.com/${REPO}) | ${VIOLATION} | ${STATUS} | See wiki | ${WIKI_LINK} |\n"
+          done
+
+          cat > "wiki/Deployments.md" <<EOF
+          # FinOps Demo App Deployments
+
+          **Last Deploy-All Run:** [Run ${BUILD_ID}](${BUILD_URL})
+
+          **Date:** ${DEPLOY_DATE}
+
+          ## Status
+
+          $(echo -e "$TABLE")
+
+          ## Individual Deployment Pages
+
+          Each demo app wiki has its own Deployment page with screenshots:
+
+          - [finops-demo-app-001 Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-001/wiki/Deployment)
+          - [finops-demo-app-002 Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-002/wiki/Deployment)
+          - [finops-demo-app-003 Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-003/wiki/Deployment)
+          - [finops-demo-app-004 Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-004/wiki/Deployment)
+          - [finops-demo-app-005 Deployment](https://github.com/devopsabcs-engineering/finops-demo-app-005/wiki/Deployment)
+          EOF
+          sed -i 's/^          //g' "wiki/Deployments.md"
+
+          cd wiki
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet && echo "No wiki changes" || {
+            git commit -m "Update deployment status (run ${BUILD_ID})"
+            git push origin master || git push origin main
+            echo "Scanner wiki updated"
+          }
