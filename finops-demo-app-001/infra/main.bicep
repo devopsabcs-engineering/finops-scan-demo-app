@@ -54,3 +54,5 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
   // tags: {} — deliberately omitted to trigger FinOps scanner findings
 }
+
+output webAppUrl string = 'https://${webApp.properties.defaultHostName}'

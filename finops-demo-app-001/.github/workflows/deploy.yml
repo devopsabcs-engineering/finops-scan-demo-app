@@ -7,6 +7,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  APP_NAME: finops-demo-app-001
+  RESOURCE_GROUP: rg-finops-demo-001
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,9 +24,90 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create resource group
-        run: az group create --name rg-finops-demo-001 --location canadacentral
+        run: az group create --name ${{ env.RESOURCE_GROUP }} --location canadacentral
 
-      - uses: azure/arm-deploy@v2
+      - name: Deploy infrastructure
+        id: deploy
+        uses: azure/arm-deploy@v2
         with:
-          resourceGroupName: rg-finops-demo-001
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: infra/main.bicep
+
+      - name: Get deployment URL
+        id: get-url
+        run: |
+          SITE_URL="${{ steps.deploy.outputs.webAppUrl }}"
+          echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: $SITE_URL"
+
+      - name: Write job summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🚀 Deployment Complete
+
+          | Detail | Value |
+          |--------|-------|
+          | **App** | ${{ env.APP_NAME }} |
+          | **URL** | [${{ steps.get-url.outputs.site_url }}](${{ steps.get-url.outputs.site_url }}) |
+          | **Resource Group** | ${{ env.RESOURCE_GROUP }} |
+          | **Location** | canadacentral |
+          | **Date** | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          EOF
+
+      - name: Take deployment screenshot
+        run: |
+          sleep 30
+          npx --yes playwright install --with-deps chromium
+          npx playwright screenshot \
+            --viewport-size="1280,900" \
+            --wait-for-timeout=5000 \
+            --full-page \
+            "${{ steps.get-url.outputs.site_url }}" \
+            screenshot.png
+
+      - name: Update wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          set -e
+          WIKI_REPO="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          SITE_URL="${{ steps.get-url.outputs.site_url }}"
+          APP="${{ env.APP_NAME }}"
+          BUILD_NUM="${{ github.run_number }}"
+          BUILD_ID="${{ github.run_id }}"
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ATTACH_NAME="${APP}-${BUILD_ID}.png"
+
+          git clone --depth 1 "$WIKI_REPO" wiki || {
+            mkdir wiki && cd wiki && git init && git remote add origin "$WIKI_REPO"
+            cd ..
+          }
+          mkdir -p wiki/images
+          cp screenshot.png "wiki/images/$ATTACH_NAME"
+
+          cat > "wiki/Deployment.md" <<EOF
+          # ${APP}
+
+          **Latest Deployment:** ${BUILD_NUM}
+
+          **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          **Site:** [${SITE_URL}](${SITE_URL})
+
+          **Workflow Run:** [Run ${BUILD_ID}](${BUILD_URL})
+
+          ---
+
+          ![Deployment Screenshot](images/${ATTACH_NAME})
+          EOF
+          sed -i 's/^          //g' "wiki/Deployment.md"
+
+          cd wiki
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet && echo "No wiki changes" || {
+            git commit -m "Update deployment screenshot for ${APP} (run ${BUILD_ID})"
+            git push origin master || git push origin main
+            echo "Wiki updated"
+          }

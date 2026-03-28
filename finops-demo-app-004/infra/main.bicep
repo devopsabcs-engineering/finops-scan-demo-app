@@ -167,3 +167,6 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
 //     targetResourceId: vm.id
 //   }
 // }
+
+output vmNameOutput string = vm.name
+output publicIpAddress string = publicIp.properties.ipAddress

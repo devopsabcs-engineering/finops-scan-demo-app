@@ -7,6 +7,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  APP_NAME: finops-demo-app-004
+  RESOURCE_GROUP: rg-finops-demo-004
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,9 +24,88 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create resource group
-        run: az group create --name rg-finops-demo-004 --location canadacentral
+        run: az group create --name ${{ env.RESOURCE_GROUP }} --location canadacentral
 
-      - uses: azure/arm-deploy@v2
+      - name: Deploy infrastructure
+        id: deploy
+        uses: azure/arm-deploy@v2
         with:
-          resourceGroupName: rg-finops-demo-004
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: infra/main.bicep
+          parameters: adminPassword=${{ secrets.VM_ADMIN_PASSWORD }}
+
+      - name: Get VM details
+        id: get-vm
+        run: |
+          VM_NAME="${{ steps.deploy.outputs.vmNameOutput }}"
+          PUBLIC_IP="${{ steps.deploy.outputs.publicIpAddress }}"
+          echo "vm_name=$VM_NAME" >> "$GITHUB_OUTPUT"
+          echo "public_ip=$PUBLIC_IP" >> "$GITHUB_OUTPUT"
+          echo "VM: $VM_NAME at $PUBLIC_IP"
+
+      - name: Write job summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🚀 Deployment Complete
+
+          | Detail | Value |
+          |--------|-------|
+          | **App** | ${{ env.APP_NAME }} |
+          | **VM Name** | ${{ steps.get-vm.outputs.vm_name }} |
+          | **Public IP** | ${{ steps.get-vm.outputs.public_ip }} |
+          | **Resource Group** | ${{ env.RESOURCE_GROUP }} |
+          | **Location** | canadacentral |
+          | **Date** | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          | **Access** | SSH (port 22) |
+          EOF
+
+      - name: Update wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          set -e
+          WIKI_REPO="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          APP="${{ env.APP_NAME }}"
+          BUILD_NUM="${{ github.run_number }}"
+          BUILD_ID="${{ github.run_id }}"
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          VM_NAME="${{ steps.get-vm.outputs.vm_name }}"
+          PUBLIC_IP="${{ steps.get-vm.outputs.public_ip }}"
+
+          git clone --depth 1 "$WIKI_REPO" wiki || {
+            mkdir wiki && cd wiki && git init && git remote add origin "$WIKI_REPO"
+            cd ..
+          }
+
+          cat > "wiki/Deployment.md" <<EOF
+          # ${APP}
+
+          **Latest Deployment:** ${BUILD_NUM}
+
+          **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          **Workflow Run:** [Run ${BUILD_ID}](${BUILD_URL})
+
+          ## VM Details
+
+          | Property | Value |
+          |----------|-------|
+          | **VM Name** | ${VM_NAME} |
+          | **Public IP** | ${PUBLIC_IP} |
+          | **Size** | Standard_D4s_v5 |
+          | **OS** | Ubuntu 22.04 LTS |
+          | **Access** | \`ssh azureuser@${PUBLIC_IP}\` |
+
+          > **Note:** No auto-shutdown schedule configured — intentional FinOps violation.
+          EOF
+          sed -i 's/^          //g' "wiki/Deployment.md"
+
+          cd wiki
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet && echo "No wiki changes" || {
+            git commit -m "Update deployment info for ${APP} (run ${BUILD_ID})"
+            git push origin master || git push origin main
+            echo "Wiki updated"
+          }

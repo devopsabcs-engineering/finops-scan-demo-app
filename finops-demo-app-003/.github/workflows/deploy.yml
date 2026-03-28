@@ -7,6 +7,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  APP_NAME: finops-demo-app-003
+  RESOURCE_GROUP: rg-finops-demo-003
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,9 +24,75 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create resource group
-        run: az group create --name rg-finops-demo-003 --location canadacentral
+        run: az group create --name ${{ env.RESOURCE_GROUP }} --location canadacentral
 
-      - uses: azure/arm-deploy@v2
+      - name: Deploy infrastructure
+        id: deploy
+        uses: azure/arm-deploy@v2
         with:
-          resourceGroupName: rg-finops-demo-003
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
           template: infra/main.bicep
+
+      - name: Write job summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🚀 Deployment Complete
+
+          | Detail | Value |
+          |--------|-------|
+          | **App** | ${{ env.APP_NAME }} |
+          | **Resource Group** | ${{ env.RESOURCE_GROUP }} |
+          | **Location** | canadacentral |
+          | **Date** | $(date -u '+%Y-%m-%d %H:%M UTC') |
+          | **Resources** | Public IP, NIC, Managed Disk, NSG, VNet |
+          | **Note** | No web endpoint — orphaned resources only |
+          EOF
+
+      - name: Update wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          set -e
+          WIKI_REPO="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          APP="${{ env.APP_NAME }}"
+          BUILD_NUM="${{ github.run_number }}"
+          BUILD_ID="${{ github.run_id }}"
+          BUILD_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          git clone --depth 1 "$WIKI_REPO" wiki || {
+            mkdir wiki && cd wiki && git init && git remote add origin "$WIKI_REPO"
+            cd ..
+          }
+
+          cat > "wiki/Deployment.md" <<EOF
+          # ${APP}
+
+          **Latest Deployment:** ${BUILD_NUM}
+
+          **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          **Workflow Run:** [Run ${BUILD_ID}](${BUILD_URL})
+
+          ## Deployed Resources
+
+          | Resource | Type |
+          |----------|------|
+          | pip-orphaned-003 | Public IP (Standard, Static) |
+          | nic-orphaned-003 | Network Interface |
+          | disk-orphaned-003 | Managed Disk (Premium, 128GB) |
+          | nsg-orphaned-003 | Network Security Group |
+          | vnet-finops-demo-003 | Virtual Network |
+
+          > **Note:** No web endpoint — orphaned resources only.
+          EOF
+          sed -i 's/^          //g' "wiki/Deployment.md"
+
+          cd wiki
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git diff --cached --quiet && echo "No wiki changes" || {
+            git commit -m "Update deployment info for ${APP} (run ${BUILD_ID})"
+            git push origin master || git push origin main
+            echo "Wiki updated"
+          }

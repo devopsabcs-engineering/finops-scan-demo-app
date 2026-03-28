@@ -67,3 +67,5 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
   tags: commonTags
 }
+
+output webAppUrl string = 'https://${webApp.properties.defaultHostName}'

@@ -53,6 +53,11 @@ if ($AzureClientId -and -not $AzureSubscriptionId) {
 
 $ConfigureSecrets = [bool]$AzureClientId
 
+$OrgAdminToken = $env:ORG_ADMIN_TOKEN
+if (-not $OrgAdminToken) {
+    $OrgAdminToken = Read-Host -Prompt 'Enter ORG_ADMIN_TOKEN for wiki push (or press Enter to skip)'
+}
+
 foreach ($app in $DemoApps) {
     $repoName = "finops-demo-app-$($app.Number)"
     $fullRepo = "$Org/$repoName"
@@ -161,6 +166,17 @@ foreach ($app in $DemoApps) {
         }
         catch {
             Write-Host "  Warning: Could not configure secrets: $_" -ForegroundColor Yellow
+        }
+    }
+
+    if ($OrgAdminToken) {
+        Write-Host "  Configuring ORG_ADMIN_TOKEN for wiki push..." -ForegroundColor Gray
+        try {
+            gh secret set ORG_ADMIN_TOKEN --repo $fullRepo --body $OrgAdminToken
+            Write-Host "  ORG_ADMIN_TOKEN configured." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  Warning: Could not configure ORG_ADMIN_TOKEN: $_" -ForegroundColor Yellow
         }
     }
 }

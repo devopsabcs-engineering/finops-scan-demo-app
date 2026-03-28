@@ -116,3 +116,5 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = {
     ]
   }
 }
+
+output resourceGroupName string = resourceGroup().name

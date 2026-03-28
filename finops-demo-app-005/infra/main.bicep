@@ -88,3 +88,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
   tags: commonTags
 }
+
+output webAppUrlEurope string = 'https://${webAppEurope.properties.defaultHostName}'
+output webAppUrlAsia string = 'https://${webAppAsia.properties.defaultHostName}'
