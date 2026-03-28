@@ -95,12 +95,19 @@ def build_result(policy_name: str, resource: dict, rule_info: dict) -> dict:
         },
         "locations": [
             {
+                "physicalLocation": {
+                    "artifactLocation": {
+                        "uri": "infra/main.bicep",
+                        "uriBaseId": "%SRCROOT%",
+                    },
+                    "region": {"startLine": 1},
+                },
                 "logicalLocations": [
                     {
                         "fullyQualifiedName": str(resource_id),
                         "kind": "resource",
                     }
-                ]
+                ],
             }
         ],
     }
