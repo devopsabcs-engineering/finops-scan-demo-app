@@ -64,6 +64,11 @@ foreach ($fedRepo in $FederatedRepos) {
     if ($existingCred -and $existingCred.Count -gt 0) {
         Write-Host "    Already exists" -ForegroundColor Green
     } else {
+        # Also check if a credential with the same subject already exists under a different name
+        $subjectMatch = az ad app federated-credential list --id $objectId --query "[?subject=='$subject']" -o json 2>$null | ConvertFrom-Json
+        if ($subjectMatch -and $subjectMatch.Count -gt 0) {
+            Write-Host "    Already exists (as '$($subjectMatch[0].name)')" -ForegroundColor Green
+        } else {
         Write-Host "    Creating..."
         $credBody = @{
             name        = $credName
@@ -75,6 +80,7 @@ foreach ($fedRepo in $FederatedRepos) {
 
         $credBody | az ad app federated-credential create --id $objectId --parameters "@-" -o none
         Write-Host "    Created" -ForegroundColor Green
+        }
     }
 }
 
