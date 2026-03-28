@@ -179,6 +179,24 @@ foreach ($app in $DemoApps) {
             Write-Host "  Warning: Could not configure ORG_ADMIN_TOKEN: $_" -ForegroundColor Yellow
         }
     }
+
+    # Configure VM_ADMIN_PASSWORD for app-004 (VM deployment)
+    if ($app.Number -eq '004') {
+        $VmAdminPassword = $env:VM_ADMIN_PASSWORD
+        if (-not $VmAdminPassword) {
+            $defaultPassword = 'F1nOps#Demo2026!'
+            $VmAdminPassword = Read-Host -Prompt "Enter VM_ADMIN_PASSWORD for app-004 (or press Enter for default: $defaultPassword)"
+            if (-not $VmAdminPassword) { $VmAdminPassword = $defaultPassword }
+        }
+        Write-Host "  Configuring VM_ADMIN_PASSWORD..." -ForegroundColor Gray
+        try {
+            gh secret set VM_ADMIN_PASSWORD --repo $fullRepo --body $VmAdminPassword
+            Write-Host "  VM_ADMIN_PASSWORD configured." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  Warning: Could not configure VM_ADMIN_PASSWORD: $_" -ForegroundColor Yellow
+        }
+    }
 }
 
 # Configure INFRACOST_API_KEY on the scanner repo
