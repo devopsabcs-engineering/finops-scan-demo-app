@@ -103,7 +103,18 @@ The following secrets are required on each demo app repo for Azure deployments v
 | `AZURE_TENANT_ID` | Azure AD tenant ID | Azure portal or `az account show` |
 | `AZURE_SUBSCRIPTION_ID` | Target Azure subscription ID | Azure portal or `az account show` |
 
-Run `scripts/setup-oidc.ps1` to create the Azure AD app registration and federated credential, then use the bootstrap script to set these secrets on all repos.
+**Important:** Azure AD requires a separate federated identity credential for each repo that uses OIDC login. The `setup-oidc.ps1` script creates federated credentials for all 6 repos (scanner + 5 demo apps) and assigns the Contributor role on the subscription:
+
+```powershell
+# Run once after creating the Azure AD app registration
+./scripts/setup-oidc.ps1
+```
+
+Then use the bootstrap script to set the secret values on all demo app repos:
+
+```powershell
+./scripts/bootstrap-demo-apps.ps1
+```
 
 ### Cross-Repo Access (`ORG_ADMIN_TOKEN`)
 

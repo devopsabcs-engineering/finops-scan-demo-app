@@ -20,11 +20,19 @@ $ErrorActionPreference = 'Stop'
 
 $AppName = 'finops-scanner-github-actions'
 $RepoOwner = 'devopsabcs-engineering'
-$RepoName = 'finops-scan-demo-app'
+$ScannerRepo = 'finops-scan-demo-app'
 $Issuer = 'https://token.actions.githubusercontent.com'
-$Subject = "repo:${RepoOwner}/${RepoName}:ref:refs/heads/main"
 $Audience = 'api://AzureADTokenExchange'
-$CredentialName = 'github-actions-main'
+
+# All repos that need federated credentials (scanner + 5 demo apps)
+$FederatedRepos = @(
+    @{ Repo = $ScannerRepo;          CredName = 'github-actions-scanner-main';  Description = "GitHub Actions OIDC for $RepoOwner/$ScannerRepo main branch" }
+    @{ Repo = 'finops-demo-app-001'; CredName = 'github-actions-demo-001-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-001 main branch" }
+    @{ Repo = 'finops-demo-app-002'; CredName = 'github-actions-demo-002-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-002 main branch" }
+    @{ Repo = 'finops-demo-app-003'; CredName = 'github-actions-demo-003-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-003 main branch" }
+    @{ Repo = 'finops-demo-app-004'; CredName = 'github-actions-demo-004-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-004 main branch" }
+    @{ Repo = 'finops-demo-app-005'; CredName = 'github-actions-demo-005-main'; Description = "GitHub Actions OIDC for $RepoOwner/finops-demo-app-005 main branch" }
+)
 
 Write-Host '=== OIDC Federation Setup ===' -ForegroundColor Cyan
 
@@ -44,24 +52,30 @@ if ($existingApp) {
     Write-Host "  Created app: $appId" -ForegroundColor Green
 }
 
-# Step 2: Create or verify federated credential
-Write-Host "`n[2/5] Checking for existing federated credential..."
-$existingCred = az ad app federated-credential list --id $objectId --query "[?name=='$CredentialName']" -o json 2>$null | ConvertFrom-Json
+# Step 2: Create or verify federated credentials for all repos
+Write-Host "`n[2/5] Configuring federated credentials for $($FederatedRepos.Count) repos..."
+foreach ($fedRepo in $FederatedRepos) {
+    $credName = $fedRepo.CredName
+    $subject = "repo:${RepoOwner}/$($fedRepo.Repo):ref:refs/heads/main"
+    Write-Host "  Checking credential '$credName' (subject: $subject)..."
 
-if ($existingCred -and $existingCred.Count -gt 0) {
-    Write-Host "  Federated credential '$CredentialName' already exists" -ForegroundColor Green
-} else {
-    Write-Host "  Creating federated credential..."
-    $credBody = @{
-        name        = $CredentialName
-        issuer      = $Issuer
-        subject     = $Subject
-        audiences   = @($Audience)
-        description = "GitHub Actions OIDC for $RepoOwner/$RepoName main branch"
-    } | ConvertTo-Json -Compress
+    $existingCred = az ad app federated-credential list --id $objectId --query "[?name=='$credName']" -o json 2>$null | ConvertFrom-Json
 
-    $credBody | az ad app federated-credential create --id $objectId --parameters "@-" -o none
-    Write-Host "  Federated credential created" -ForegroundColor Green
+    if ($existingCred -and $existingCred.Count -gt 0) {
+        Write-Host "    Already exists" -ForegroundColor Green
+    } else {
+        Write-Host "    Creating..."
+        $credBody = @{
+            name        = $credName
+            issuer      = $Issuer
+            subject     = $subject
+            audiences   = @($Audience)
+            description = $fedRepo.Description
+        } | ConvertTo-Json -Compress
+
+        $credBody | az ad app federated-credential create --id $objectId --parameters "@-" -o none
+        Write-Host "    Created" -ForegroundColor Green
+    }
 }
 
 # Step 3: Create or get service principal
@@ -78,25 +92,25 @@ if ($existingSp) {
     Write-Host "  Created service principal: $spObjectId" -ForegroundColor Green
 }
 
-# Step 4: Assign Reader role on subscription
-Write-Host "`n[4/5] Checking Reader role assignment..."
+# Step 4: Assign Contributor role on subscription (required for deployments)
+Write-Host "`n[4/5] Checking Contributor role assignment..."
 $subscriptionId = az account show --query 'id' -o tsv
 $existingRole = az role assignment list `
     --assignee $appId `
-    --role 'Reader' `
+    --role 'Contributor' `
     --scope "/subscriptions/$subscriptionId" `
     --query '[0]' -o json 2>$null | ConvertFrom-Json
 
 if ($existingRole) {
-    Write-Host "  Reader role already assigned" -ForegroundColor Green
+    Write-Host "  Contributor role already assigned" -ForegroundColor Green
 } else {
-    Write-Host "  Assigning Reader role on subscription..."
+    Write-Host "  Assigning Contributor role on subscription..."
     az role assignment create `
         --assignee $appId `
-        --role 'Reader' `
+        --role 'Contributor' `
         --scope "/subscriptions/$subscriptionId" `
         -o none
-    Write-Host "  Reader role assigned" -ForegroundColor Green
+    Write-Host "  Contributor role assigned" -ForegroundColor Green
 }
 
 # Step 5: Output configuration
@@ -108,5 +122,9 @@ Write-Host "  AZURE_CLIENT_ID:       $appId"
 Write-Host "  AZURE_TENANT_ID:       $tenantId"
 Write-Host "  AZURE_SUBSCRIPTION_ID: $subscriptionId"
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "`nAdd these as repository secrets in GitHub:" -ForegroundColor Yellow
-Write-Host "  https://github.com/$RepoOwner/$RepoName/settings/secrets/actions" -ForegroundColor Yellow
+Write-Host "`nFederated credentials configured for:" -ForegroundColor Yellow
+foreach ($fedRepo in $FederatedRepos) {
+    Write-Host "  - $RepoOwner/$($fedRepo.Repo)" -ForegroundColor Yellow
+}
+Write-Host "`nAdd these as repository secrets via the bootstrap script:" -ForegroundColor Yellow
+Write-Host "  ./scripts/bootstrap-demo-apps.ps1" -ForegroundColor Yellow
