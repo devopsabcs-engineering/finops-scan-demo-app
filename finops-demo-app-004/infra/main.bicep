@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------
 
 @description('Azure region for all resources')
-param location string = 'eastus'
+param location string = 'canadacentral'
 
 @description('VM administrator username')
 param adminUsername string = 'azureuser'

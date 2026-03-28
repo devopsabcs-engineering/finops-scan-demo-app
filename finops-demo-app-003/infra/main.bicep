@@ -11,7 +11,7 @@
 // -----------------------------------------------------------------------
 
 @description('Azure region for all resources')
-param location string = 'eastus'
+param location string = 'canadacentral'
 
 var commonTags = {
   Environment: 'Development'

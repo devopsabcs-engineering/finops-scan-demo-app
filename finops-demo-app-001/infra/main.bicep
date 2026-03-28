@@ -7,7 +7,7 @@
 // -----------------------------------------------------------------------
 
 @description('Azure region for all resources')
-param location string = 'eastus'
+param location string = 'canadacentral'
 
 @description('App Service Plan name')
 param appServicePlanName string = 'asp-finops-demo-001'
