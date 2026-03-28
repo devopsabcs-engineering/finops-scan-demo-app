@@ -53,6 +53,8 @@ if ($AzureClientId -and -not $AzureSubscriptionId) {
 
 $ConfigureSecrets = [bool]$AzureClientId
 
+$script:wikiInitNeeded = @()
+
 $OrgAdminToken = $env:ORG_ADMIN_TOKEN
 if (-not $OrgAdminToken) {
     $OrgAdminToken = Read-Host -Prompt 'Enter ORG_ADMIN_TOKEN for wiki push (or press Enter to skip)'
@@ -201,41 +203,21 @@ foreach ($app in $DemoApps) {
     # Initialize wiki (required before workflows can push to it)
     if ($OrgAdminToken) {
         Write-Host "  Initializing wiki..." -ForegroundColor Gray
-        # Enable wiki feature on the repo first
+        # Enable wiki feature on the repo
         gh repo edit $fullRepo --enable-wiki 2>$null
         $wikiUrl = "https://x-access-token:${OrgAdminToken}@github.com/${fullRepo}.wiki.git"
         $wikiTempDir = Join-Path ([System.IO.Path]::GetTempPath()) "wiki-init-$($app.Number)-$(Get-Random)"
-        try {
-            $null = git clone --depth 1 $wikiUrl $wikiTempDir 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "    Wiki already initialized." -ForegroundColor Green
-            }
-            else {
-                # Wiki doesn't exist yet — create it with a Home page
-                New-Item -ItemType Directory -Path $wikiTempDir -Force | Out-Null
-                Push-Location $wikiTempDir
-                git init -b master 2>&1 | Out-Null
-                git remote add origin $wikiUrl
-                "# $repoName`n`nWiki for $($app.Description).`n`n- [Deployment](Deployment)" | Set-Content -Path 'Home.md'
-                git add -A
-                git commit -m "Initialize wiki" 2>&1 | Out-Null
-                git push -u origin master 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "    Wiki initialized." -ForegroundColor Green
-                }
-                else {
-                    Write-Host "    Could not initialize wiki." -ForegroundColor Yellow
-                }
-                Pop-Location
-            }
+        $null = git clone --depth 1 $wikiUrl $wikiTempDir 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "    Wiki already initialized." -ForegroundColor Green
         }
-        catch {
-            Write-Host "    Warning: Wiki init failed: $_" -ForegroundColor Yellow
-            if ((Get-Location).Path -ne $PSScriptRoot) { Pop-Location }
+        else {
+            # Wiki git repo doesn't exist until the first page is created via the web UI.
+            # Collect repos that need manual wiki init.
+            $script:wikiInitNeeded += $fullRepo
+            Write-Host "    Wiki needs manual initialization (will show link at end)." -ForegroundColor Yellow
         }
-        finally {
-            if (Test-Path $wikiTempDir) { Remove-Item -Recurse -Force $wikiTempDir -ErrorAction SilentlyContinue }
-        }
+        if (Test-Path $wikiTempDir) { Remove-Item -Recurse -Force $wikiTempDir -ErrorAction SilentlyContinue }
     }
 }
 
@@ -262,52 +244,28 @@ if ($OrgAdminToken) {
     gh repo edit $scannerFullRepo --enable-wiki 2>$null
     $scannerWikiUrl = "https://x-access-token:${OrgAdminToken}@github.com/${scannerFullRepo}.wiki.git"
     $scannerWikiDir = Join-Path ([System.IO.Path]::GetTempPath()) "wiki-scanner-$(Get-Random)"
-    try {
-        $null = git clone --depth 1 $scannerWikiUrl $scannerWikiDir 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  Scanner wiki already initialized." -ForegroundColor Green
-        }
-        else {
-            New-Item -ItemType Directory -Path $scannerWikiDir -Force | Out-Null
-            Push-Location $scannerWikiDir
-            git init -b master 2>&1 | Out-Null
-            git remote add origin $scannerWikiUrl
-            @"
-# FinOps Cost Governance Scanner
-
-Central scanner for 5 FinOps demo apps.
-
-- [Deployments](Deployments)
-
-## Demo App Repos
-
-| App | Violation | Wiki |
-|-----|-----------|------|
-| [finops-demo-app-001](https://github.com/$Org/finops-demo-app-001) | Missing Tags | [Deployment](https://github.com/$Org/finops-demo-app-001/wiki/Deployment) |
-| [finops-demo-app-002](https://github.com/$Org/finops-demo-app-002) | Oversized Resources | [Deployment](https://github.com/$Org/finops-demo-app-002/wiki/Deployment) |
-| [finops-demo-app-003](https://github.com/$Org/finops-demo-app-003) | Orphaned Resources | [Deployment](https://github.com/$Org/finops-demo-app-003/wiki/Deployment) |
-| [finops-demo-app-004](https://github.com/$Org/finops-demo-app-004) | No Auto-Shutdown | [Deployment](https://github.com/$Org/finops-demo-app-004/wiki/Deployment) |
-| [finops-demo-app-005](https://github.com/$Org/finops-demo-app-005) | Redundant Resources | [Deployment](https://github.com/$Org/finops-demo-app-005/wiki/Deployment) |
-"@ | Set-Content -Path 'Home.md'
-            git add -A
-            git commit -m "Initialize wiki" 2>&1 | Out-Null
-            git push -u origin master 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  Scanner wiki initialized." -ForegroundColor Green
-            }
-            else {
-                Write-Host "  Could not initialize scanner wiki." -ForegroundColor Yellow
-            }
-            Pop-Location
-        }
+    $null = git clone --depth 1 $scannerWikiUrl $scannerWikiDir 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Scanner wiki already initialized." -ForegroundColor Green
     }
-    catch {
-        Write-Host "  Warning: Scanner wiki init failed: $_" -ForegroundColor Yellow
-        if ((Get-Location).Path -ne $PSScriptRoot) { Pop-Location }
+    else {
+        $script:wikiInitNeeded += $scannerFullRepo
+        Write-Host "  Scanner wiki needs manual initialization." -ForegroundColor Yellow
     }
-    finally {
-        if (Test-Path $scannerWikiDir) { Remove-Item -Recurse -Force $scannerWikiDir -ErrorAction SilentlyContinue }
+    if (Test-Path $scannerWikiDir) { Remove-Item -Recurse -Force $scannerWikiDir -ErrorAction SilentlyContinue }
+}
+
+# Print wiki initialization instructions if needed
+if ($script:wikiInitNeeded.Count -gt 0) {
+    Write-Host "`n========================================" -ForegroundColor Yellow
+    Write-Host "MANUAL STEP REQUIRED: Initialize wikis" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "GitHub requires the first wiki page to be created via the web UI." -ForegroundColor Yellow
+    Write-Host "Click each link below, then click 'Save page' (default content is fine):`n" -ForegroundColor Yellow
+    foreach ($repo in $script:wikiInitNeeded) {
+        Write-Host "  https://github.com/$repo/wiki/_new" -ForegroundColor Cyan
     }
+    Write-Host ""
 }
 
 Write-Host "`nBootstrap complete. Created/verified $($DemoApps.Count) demo app repos." -ForegroundColor Cyan

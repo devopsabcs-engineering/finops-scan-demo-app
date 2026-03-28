@@ -74,6 +74,7 @@ jobs:
             screenshot.png
 
       - name: Update wiki
+        continue-on-error: true
         env:
           WIKI_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
         run: |
