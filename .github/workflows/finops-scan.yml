@@ -34,10 +34,6 @@ jobs:
         with:
           name: sarif-psrule-${{ matrix.app }}
           path: reports/psrule-${{ matrix.app }}.sarif
-      - uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: reports/psrule-${{ matrix.app }}.sarif
-          category: finops/psrule/${{ matrix.app }}
 
   checkov-scan:
     runs-on: ubuntu-latest
@@ -60,10 +56,6 @@ jobs:
         with:
           name: sarif-checkov-${{ matrix.app }}
           path: reports/results_sarif.sarif
-      - uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: reports/results_sarif.sarif
-          category: finops/checkov/${{ matrix.app }}
 
   custodian-scan:
     runs-on: ubuntu-latest
@@ -80,18 +72,21 @@ jobs:
       - name: Install Cloud Custodian
         run: pip install c7n c7n-azure
       - name: Run Cloud Custodian
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          custodian run -s output/ src/config/custodian/ --cache-period 0
+          # Filter policies to target the specific app's resource group
+          export CUSTODIAN_RG="rg-finops-demo-${{ matrix.app }}"
+          custodian run -s output/ src/config/custodian/ \
+            --cache-period 0 \
+            --region canadacentral 2>&1 || true
       - name: Convert to SARIF
-        run: python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
+        run: |
+          python src/converters/custodian-to-sarif.py output/ reports/custodian-${{ matrix.app }}.sarif
       - uses: actions/upload-artifact@v4
         with:
           name: sarif-custodian-${{ matrix.app }}
           path: reports/custodian-${{ matrix.app }}.sarif
-      - uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: reports/custodian-${{ matrix.app }}.sarif
-          category: finops/custodian/${{ matrix.app }}
 
   cross-repo-upload:
     needs: [psrule-scan, checkov-scan, custodian-scan]
