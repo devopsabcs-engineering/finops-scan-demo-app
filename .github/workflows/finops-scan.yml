@@ -79,32 +79,21 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          mkdir -p output reports /tmp/custodian-policies
-          RG="rg-finops-demo-${{ matrix.app }}"
+          mkdir -p output reports
 
-          # Generate per-app policies with resource group filter injected
+          # Run each policy file individually
+          # Cloud Custodian filters resources at query time, so we rely on
+          # the policy filters already defined in the YAML files.
+          # The subscription-level scan will find resources across all RGs,
+          # and the cross-repo-upload job routes results to the correct repo.
           for policy_file in src/config/custodian/*.yml; do
-            filename=$(basename "$policy_file")
-            python3 -c "
-          import yaml
-          with open('$policy_file') as f:
-              data = yaml.safe_load(f)
-          for policy in data.get('policies', []):
-              rt = policy.get('resource', '')
-              if rt == 'azure.resourcegroup':
-                  policy.setdefault('filters', []).insert(0, {'type': 'value', 'key': 'name', 'value': '$RG'})
-              else:
-                  policy.setdefault('filters', []).insert(0, {'type': 'value', 'key': 'resourceGroup', 'op': 'eq', 'value': '$RG'})
-          with open('/tmp/custodian-policies/$filename', 'w') as f:
-              yaml.dump(data, f)
-          " || echo "Warning: Could not process $policy_file"
-          done
-
-          # Run custodian with filtered policies
-          for policy_file in /tmp/custodian-policies/*.yml; do
-            echo "Running: $(basename $policy_file) against $RG"
+            echo "Running: $(basename $policy_file)"
             custodian run -s output/ "$policy_file" --cache-period 0 2>&1 || true
           done
+
+          # List what was found
+          echo "=== Custodian output ==="
+          find output/ -name "resources.json" -exec sh -c 'echo "  $(dirname {} | xargs basename): $(cat {} | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0) resources"' \;
           echo "Custodian scan complete for app ${{ matrix.app }}"
       - name: Convert to SARIF
         run: |
