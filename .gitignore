@@ -9,6 +9,12 @@
 # copilot tracking files
 .copilot-tracking/
 
+# FinOps scan generated outputs
+output/
+reports/
+results/
+results.sarif
+
 # User-specific files
 *.rsuser
 *.suo
