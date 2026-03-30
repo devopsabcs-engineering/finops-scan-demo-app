@@ -248,6 +248,23 @@ foreach ($app in $DemoApps) {
         }
         if (Test-Path $wikiTempDir) { Remove-Item -Recurse -Force $wikiTempDir -ErrorAction SilentlyContinue }
     }
+
+    # Resolve and set APP_URL from Azure deployment (if deployed)
+    $rg = "rg-finops-demo-$($app.Number)"
+    $appHostName = az webapp list --resource-group $rg --query '[0].defaultHostName' -o tsv 2>$null
+    if ($appHostName) {
+        $appUrl = "https://$appHostName"
+        Write-Host "  Configuring APP_URL ($appUrl)..." -ForegroundColor Gray
+        try {
+            gh secret set APP_URL --repo $fullRepo --body $appUrl
+            Write-Host "  APP_URL configured." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  Warning: Could not configure APP_URL: $_" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  APP_URL: app not deployed yet, skipping." -ForegroundColor Gray
+    }
 }
 
 # Configure INFRACOST_API_KEY on the scanner repo
