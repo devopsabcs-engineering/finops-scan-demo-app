@@ -48,6 +48,13 @@ jobs:
           echo "site_url=$SITE_URL" >> "$GITHUB_OUTPUT"
           echo "Deployed to: $SITE_URL"
 
+      - name: Update APP_URL secret
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          gh secret set APP_URL --repo "${{ github.repository }}" --body "${{ steps.get-url.outputs.site_url }}"
+          echo "APP_URL secret updated"
+
       - name: Write job summary
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF

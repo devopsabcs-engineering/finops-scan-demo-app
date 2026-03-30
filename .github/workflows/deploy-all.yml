@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -58,6 +59,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build central deployment summary
         env:
@@ -150,3 +158,24 @@ jobs:
             git push origin master || git push origin main
             echo "Scanner wiki updated"
           }
+
+      - name: Update APP_URL secrets on all demo app repos
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+        run: |
+          for i in 001 002 003 004 005; do
+            REPO="devopsabcs-engineering/finops-demo-app-${i}"
+            RG="rg-finops-demo-${i}"
+            if az group exists --name "$RG" 2>/dev/null | grep -q true; then
+              APP_URL=$(az webapp list --resource-group "$RG" \
+                --query '[0].defaultHostName' -o tsv 2>/dev/null || echo "")
+              if [ -n "$APP_URL" ]; then
+                gh secret set APP_URL --repo "$REPO" --body "https://${APP_URL}"
+                echo "APP_URL set on ${REPO}: https://${APP_URL}"
+              else
+                echo "APP_URL skipped for ${REPO} (no web app found)"
+              fi
+            else
+              echo "APP_URL skipped for ${REPO} (resource group not found)"
+            fi
+          done
