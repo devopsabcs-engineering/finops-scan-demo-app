@@ -1,0 +1,54 @@
+table Dim_Severity
+	lineageTag: be90d373-2307-4e3f-bd43-4f1183c1f361
+
+	column SeverityKey
+		dataType: string
+		lineageTag: 5618df65-03d8-4f45-b0e9-482e82b088b9
+		summarizeBy: none
+		sourceColumn: SeverityKey
+
+	column Severity
+		dataType: string
+		lineageTag: 44934f79-def8-4d4d-a948-d35fcba05356
+		summarizeBy: none
+		sourceColumn: Severity
+
+	column SeverityWeight
+		dataType: int64
+		formatString: 0
+		lineageTag: c7dc53f2-a861-4c77-941b-c57190ed4a76
+		summarizeBy: sum
+		sourceColumn: SeverityWeight
+
+	column SortOrder
+		dataType: int64
+		formatString: 0
+		lineageTag: 23483afe-18c8-4953-9e44-3f02b84d46a4
+		summarizeBy: none
+		sourceColumn: SortOrder
+
+	partition Dim_Severity = m
+		mode: import
+		source =
+				let
+					Source = Table.FromRows(
+						{
+							{"error", "Critical", "10", "1"},
+							{"warning", "Medium", "5", "2"},
+							{"note", "Low", "1", "3"}
+						},
+						{"SeverityKey", "Severity", "SeverityWeight", "SortOrder"}
+					),
+					ChangedTypes = Table.TransformColumnTypes(Source, {
+						{"SeverityKey", type text},
+						{"Severity", type text},
+						{"SeverityWeight", Int64.Type},
+						{"SortOrder", Int64.Type}
+					})
+				in
+					ChangedTypes
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

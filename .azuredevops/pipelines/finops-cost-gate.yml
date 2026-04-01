@@ -1,0 +1,103 @@
+# FinOps Cost Gate Pipeline
+# Equivalent of .github/workflows/finops-cost-gate.yml
+# PR-triggered via branch policy (build validation), NOT via YAML pr: trigger
+# NOTE: A branch policy must be configured on the 'main' branch in ADO
+#       targeting this pipeline with path filter '/infra/**'
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+- group: finops-secrets
+
+steps:
+- checkout: self
+
+- task: Bash@3
+  displayName: 'Install Infracost CLI'
+  inputs:
+    targetType: inline
+    script: |
+      curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+      infracost --version
+
+- task: Bash@3
+  displayName: 'Detect IaC type in infra/'
+  name: detectIaC
+  inputs:
+    targetType: inline
+    script: |
+      if find infra/ -name '*.tf' -o -name '*.tf.json' | grep -q .; then
+        echo "##vso[task.setvariable variable=hasTerraform;isOutput=true]true"
+        echo "Terraform files detected"
+      else
+        echo "##vso[task.setvariable variable=hasTerraform;isOutput=true]false"
+        echo "No Terraform files found — Infracost requires Terraform. Skipping cost analysis."
+      fi
+
+- task: Bash@3
+  displayName: 'Generate Infracost baseline from main'
+  condition: eq(variables['detectIaC.hasTerraform'], 'true')
+  env:
+    INFRACOST_API_KEY: $(INFRACOST_API_KEY)
+  inputs:
+    targetType: inline
+    script: |
+      mkdir -p reports
+      git fetch origin main
+      git checkout origin/main -- infra/
+      infracost breakdown --path infra/ \
+        --format json \
+        --out-file infracost-base.json
+      git checkout HEAD -- infra/
+
+- task: Bash@3
+  displayName: 'Run Infracost diff'
+  condition: eq(variables['detectIaC.hasTerraform'], 'true')
+  env:
+    INFRACOST_API_KEY: $(INFRACOST_API_KEY)
+  inputs:
+    targetType: inline
+    script: |
+      infracost diff --path infra/ \
+        --compare-to infracost-base.json \
+        --format json \
+        --out-file infracost-output.json
+
+- task: Bash@3
+  displayName: 'Post PR comment'
+  condition: and(succeeded(), eq(variables['detectIaC.hasTerraform'], 'true'), eq(variables['Build.Reason'], 'PullRequest'))
+  env:
+    INFRACOST_API_KEY: $(INFRACOST_API_KEY)
+  inputs:
+    targetType: inline
+    script: |
+      infracost comment azure-repos \
+        --path infracost-output.json \
+        --azure-access-token $(System.AccessToken) \
+        --pull-request $(System.PullRequest.PullRequestId) \
+        --repo-url $(Build.Repository.Uri) \
+        --behavior update
+
+- task: Bash@3
+  displayName: 'Convert to SARIF'
+  condition: eq(variables['detectIaC.hasTerraform'], 'true')
+  inputs:
+    targetType: inline
+    script: |
+      python src/converters/infracost-to-sarif.py infracost-output.json reports/infracost.sarif
+
+- publish: reports/infracost.sarif
+  artifact: sarif-infracost
+  displayName: 'Publish Infracost SARIF artifact'
+  condition: eq(variables['detectIaC.hasTerraform'], 'true')
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish SARIF for viewer'
+  condition: eq(variables['detectIaC.hasTerraform'], 'true')
+  inputs:
+    pathToPublish: reports/infracost.sarif
+    artifactName: CodeAnalysisLogs

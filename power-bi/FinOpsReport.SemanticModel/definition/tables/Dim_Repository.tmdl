@@ -1,0 +1,40 @@
+table Dim_Repository
+	lineageTag: 7b7456ab-55ee-4038-b30b-5483906d6592
+
+	column RepositoryKey
+		dataType: string
+		lineageTag: 51aa1f3f-4ac9-4ec7-b320-30fe07871522
+		summarizeBy: none
+		sourceColumn: RepositoryKey
+
+	column RepositoryName
+		dataType: string
+		lineageTag: 9943d6e3-6d9f-4b40-b109-3df0c137e15e
+		summarizeBy: none
+		sourceColumn: RepositoryName
+
+	column Organization
+		dataType: string
+		lineageTag: fd1572d8-78e3-4332-b2a3-f3aa785375f2
+		summarizeBy: none
+		sourceColumn: Organization
+
+	partition Dim_Repository = m
+		mode: import
+		source =
+				let
+					StorageUrl = "https://" & StorageAccountName & ".blob.core.windows.net/" & ContainerName,
+					Source = AzureStorage.Blobs(StorageUrl),
+					FilteredRows = Table.SelectRows(Source, each Text.EndsWith([Name], ".json")),
+					ParsedContent = Table.AddColumn(FilteredRows, "ParsedJson", each let p = Json.Document([Content]) in if p is list then p else {p}),
+					ExpandedRows = Table.ExpandListColumn(ParsedContent, "ParsedJson"),
+					ExpandedCols = Table.ExpandRecordColumn(ExpandedRows, "ParsedJson", {"RepositoryKey", "RepositoryName", "Organization"}),
+					SelectedCols = Table.SelectColumns(ExpandedCols, {"RepositoryKey", "RepositoryName", "Organization"}),
+					UniqueRepos = Table.Distinct(SelectedCols, {"RepositoryKey"})
+				in
+					UniqueRepos
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

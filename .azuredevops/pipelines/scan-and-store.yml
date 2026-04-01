@@ -1,0 +1,148 @@
+# FinOps Scan-and-Store Pipeline
+# Transforms SARIF scan results to FinOps schema and uploads to blob storage
+# Schedule: Weekly Monday 06:00 UTC
+
+trigger: none
+pr: none
+
+schedules:
+- cron: '0 6 * * Mon'
+  displayName: 'Weekly Monday 06:00 UTC scan and store'
+  branches:
+    include:
+    - main
+  always: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+- group: finops-oidc-config
+- group: finops-secrets
+- name: serviceConnection
+  value: 'finops-scanner-ado'
+- name: storageAccount
+  value: '$(FINOPS_STORAGE_ACCOUNT)'
+- name: containerName
+  value: 'finops-scan-results'
+
+steps:
+- checkout: self
+
+- task: PowerShell@2
+  displayName: 'Install PSRule'
+  inputs:
+    targetType: inline
+    pwsh: true
+    script: |
+      Install-Module PSRule.Rules.Azure -Force -Scope CurrentUser
+
+- task: Bash@3
+  displayName: 'Install Checkov'
+  inputs:
+    targetType: inline
+    script: |
+      pip install checkov
+
+- task: PowerShell@2
+  displayName: 'Run PSRule for all apps'
+  continueOnError: true
+  inputs:
+    targetType: inline
+    pwsh: true
+    script: |
+      foreach ($id in '001','002','003','004','005') {
+        $infraPath = "finops-demo-app-$id/infra/"
+        if (Test-Path $infraPath) {
+          New-Item -ItemType Directory -Path reports -Force | Out-Null
+          Invoke-PSRule -InputPath $infraPath `
+            -Module PSRule.Rules.Azure `
+            -OutputFormat Sarif `
+            -OutputPath "reports/psrule-$id.sarif" `
+            -Option src/config/ps-rule.yaml `
+            -Baseline Azure.GA_2024_12
+          Write-Host "PSRule scan complete for app $id"
+        }
+      }
+
+- task: Bash@3
+  displayName: 'Run Checkov for all apps'
+  continueOnError: true
+  inputs:
+    targetType: inline
+    script: |
+      mkdir -p reports
+      for ID in 001 002 003 004 005; do
+        INFRA="finops-demo-app-${ID}/infra/"
+        if [ -d "$INFRA" ]; then
+          checkov -d "$INFRA" --framework bicep -o sarif --output-file-path reports/ --soft-fail || true
+          if [ -f "reports/results_sarif.sarif" ]; then
+            mv reports/results_sarif.sarif "reports/checkov-${ID}.sarif"
+          fi
+          echo "Checkov scan complete for app $ID"
+        fi
+      done
+
+- task: Bash@3
+  displayName: 'Install Cloud Custodian'
+  inputs:
+    targetType: inline
+    script: |
+      pip install c7n c7n-azure
+
+- task: AzureCLI@2
+  displayName: 'Run Cloud Custodian for all apps'
+  continueOnError: true
+  inputs:
+    azureSubscription: $(serviceConnection)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      mkdir -p output reports
+      for ID in 001 002 003 004 005; do
+        echo "--- Custodian scan for app $ID ---"
+        rm -rf output/*
+        for policy_file in src/config/custodian/*.yml; do
+          echo "  Running: $(basename $policy_file)"
+          custodian run -s output/ "$policy_file" --cache-period 0 2>&1 || true
+        done
+        if [ -d "output/" ] && [ "$(ls -A output/)" ]; then
+          python src/converters/custodian-to-sarif.py output/ "results/custodian-${ID}.sarif" \
+            --resource-group "rg-finops-demo-${ID}" || true
+        fi
+        echo "Custodian scan complete for app $ID"
+      done
+
+- task: Bash@3
+  displayName: 'Install and run Infracost'
+  continueOnError: true
+  env:
+    INFRACOST_API_KEY: $(INFRACOST_API_KEY)
+  inputs:
+    targetType: inline
+    script: |
+      curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+      mkdir -p reports
+      for ID in 001 002 003 004 005; do
+        INFRA="finops-demo-app-${ID}/infra/"
+        if find "$INFRA" -name '*.tf' -o -name '*.tf.json' 2>/dev/null | grep -q .; then
+          echo "Terraform detected for app $ID — running Infracost"
+          infracost breakdown --path "$INFRA" --format json --out-file "reports/infracost-${ID}.json" || true
+          if [ -f "reports/infracost-${ID}.json" ]; then
+            python src/converters/infracost-to-sarif.py "reports/infracost-${ID}.json" "reports/infracost-${ID}.sarif" || true
+          fi
+        else
+          echo "No Terraform files for app $ID — skipping Infracost"
+        fi
+      done
+
+- task: AzureCLI@2
+  displayName: 'Upload scan results to Blob Storage'
+  inputs:
+    azureSubscription: $(serviceConnection)
+    scriptType: pscore
+    scriptPath: scripts/scan-and-store.ps1
+    arguments: >-
+      -StorageAccount "$(storageAccount)"
+      -ContainerName "$(containerName)"
+      -AppIds "001,002,003,004,005"

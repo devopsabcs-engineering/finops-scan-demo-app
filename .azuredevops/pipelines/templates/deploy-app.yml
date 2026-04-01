@@ -1,0 +1,161 @@
+# Deploy App Template
+# Reusable template for deploying a single demo app
+# Replaces per-app deploy workflows (finops-demo-app-{appId}/.github/workflows/deploy.yml)
+
+parameters:
+- name: appId
+  type: string
+- name: serviceConnection
+  type: string
+  default: 'finops-scanner-ado'
+- name: location
+  type: string
+  default: 'canadacentral'
+
+steps:
+- checkout: self
+
+- task: AzureCLI@2
+  displayName: 'Create resource group with required tags'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az group create \
+        --name "rg-finops-demo-${{ parameters.appId }}" \
+        --location "${{ parameters.location }}" \
+        --tags \
+          CostCenter="CC-1234" \
+          Owner="finops-team@contoso.com" \
+          Environment="dev" \
+          Application="finops-demo-${{ parameters.appId }}" \
+          Department="Engineering" \
+          Project="FinOps-Scanner" \
+          ManagedBy="Bicep"
+
+- task: AzureResourceManagerTemplateDeployment@3
+  displayName: 'Deploy Bicep'
+  name: deploy
+  inputs:
+    azureResourceManagerConnection: ${{ parameters.serviceConnection }}
+    resourceGroupName: 'rg-finops-demo-${{ parameters.appId }}'
+    location: '${{ parameters.location }}'
+    csmFile: 'finops-demo-app-${{ parameters.appId }}/infra/main.bicep'
+    deploymentMode: 'Incremental'
+    ${{ if eq(parameters.appId, '004') }}:
+      overrideParameters: '-adminPassword $(VM_ADMIN_PASSWORD)'
+
+- task: AzureCLI@2
+  displayName: 'Deploy app content'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      cd "finops-demo-app-${{ parameters.appId }}/src" && zip -r ../../app.zip . && cd ../..
+      WEB_APP_NAME=$(az webapp list \
+        --resource-group "rg-finops-demo-${{ parameters.appId }}" \
+        --query '[0].name' -o tsv)
+      az webapp deploy \
+        --resource-group "rg-finops-demo-${{ parameters.appId }}" \
+        --name "$WEB_APP_NAME" \
+        --src-path app.zip \
+        --type zip
+      echo "Content deployed to $WEB_APP_NAME"
+
+- task: AzureCLI@2
+  displayName: 'Get web app URL'
+  name: getUrl
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      WEB_APP_URL=$(az webapp list \
+        --resource-group "rg-finops-demo-${{ parameters.appId }}" \
+        --query '[0].defaultHostName' -o tsv)
+      echo "##vso[task.setvariable variable=webAppUrl;isOutput=true]https://${WEB_APP_URL}"
+      echo "Deployed to: https://${WEB_APP_URL}"
+
+- task: Bash@3
+  displayName: 'Take deployment screenshot'
+  name: screenshot
+  continueOnError: true
+  inputs:
+    targetType: inline
+    script: |
+      WEB_APP_URL="$(getUrl.webAppUrl)"
+      if [ -z "$WEB_APP_URL" ] || [ "$WEB_APP_URL" = "https://" ]; then
+        echo "No web app URL available, skipping screenshot"
+        echo "##vso[task.setvariable variable=screenshotTaken;isOutput=true]false"
+        exit 0
+      fi
+      echo "Waiting 30s for app to stabilize..."
+      sleep 30
+      npx --yes playwright install --with-deps chromium
+      npx playwright screenshot \
+        --viewport-size="1280,900" \
+        --wait-for-timeout=5000 \
+        --full-page \
+        "$WEB_APP_URL" \
+        "$(Build.ArtifactStagingDirectory)/screenshot-${{ parameters.appId }}.png"
+      echo "Screenshot captured for app ${{ parameters.appId }}"
+      echo "##vso[task.setvariable variable=screenshotTaken;isOutput=true]true"
+
+- publish: $(Build.ArtifactStagingDirectory)/screenshot-${{ parameters.appId }}.png
+  artifact: screenshot-${{ parameters.appId }}
+  displayName: 'Publish screenshot artifact'
+  continueOnError: true
+  condition: eq(variables['screenshot.screenshotTaken'], 'true')
+
+- script: |
+    set -e
+    WEB_APP_URL="$(getUrl.webAppUrl)"
+    BUILD_ID="$(Build.BuildId)"
+    BUILD_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=${BUILD_ID}"
+    DEPLOY_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
+    APP="finops-demo-app-${{ parameters.appId }}"
+    ATTACH_NAME="${APP}-${BUILD_ID}.png"
+    WIKI_REPO="https://$(WIKI_PAT)@dev.azure.com/MngEnvMCAP675646/FinOps/_git/FinOps.wiki"
+    SCREENSHOT="$(Build.ArtifactStagingDirectory)/screenshot-${{ parameters.appId }}.png"
+
+    git clone --depth 1 "$WIKI_REPO" wiki
+    mkdir -p wiki/.attachments wiki/Deployments
+
+    # Copy screenshot if it exists
+    if [ -f "$SCREENSHOT" ]; then
+      cp "$SCREENSHOT" "wiki/.attachments/$ATTACH_NAME"
+      SCREENSHOT_MD="![Deployment Screenshot](/.attachments/$ATTACH_NAME)"
+    else
+      SCREENSHOT_MD="_No screenshot available (app may not have a web endpoint)_"
+    fi
+
+    cat > "wiki/Deployments/${APP}.md" <<EOF
+    # ${APP}
+
+    **Latest Deployment:** ${BUILD_ID}
+
+    **Date:** ${DEPLOY_DATE}
+
+    **Site:** [${WEB_APP_URL}](${WEB_APP_URL})
+
+    **Pipeline:** [Build ${BUILD_ID}](${BUILD_URL})
+
+    ---
+
+    ${SCREENSHOT_MD}
+    EOF
+    sed -i 's/^    //g' "wiki/Deployments/${APP}.md"
+
+    cd wiki
+    git config user.email "pipeline@dev.azure.com"
+    git config user.name "Azure Pipeline"
+    git add -A
+    git diff --cached --quiet && echo "No wiki changes" || {
+      git commit -m "Update deployment page for ${APP} (build ${BUILD_ID})"
+      git push origin wikiMaster
+      echo "Wiki updated: /Deployments/${APP}"
+    }
+  displayName: 'Update wiki with deployment info and screenshot'
+  continueOnError: true

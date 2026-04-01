@@ -1,0 +1,77 @@
+# Teardown All Demo Apps Pipeline
+# Equivalent of .github/workflows/teardown-all.yml
+# Tears down all 5 demo apps with environment approval gate
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Teardown
+  displayName: 'Teardown All Demo Apps'
+  jobs:
+  - deployment: TeardownApp001
+    displayName: 'Teardown App 001'
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/teardown-app.yml
+            parameters:
+              appId: '001'
+              serviceConnection: 'finops-demo-app-001'
+
+  - deployment: TeardownApp002
+    displayName: 'Teardown App 002'
+    dependsOn: TeardownApp001
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/teardown-app.yml
+            parameters:
+              appId: '002'
+              serviceConnection: 'finops-demo-app-002'
+
+  - deployment: TeardownApp003
+    displayName: 'Teardown App 003'
+    dependsOn: TeardownApp002
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/teardown-app.yml
+            parameters:
+              appId: '003'
+              serviceConnection: 'finops-demo-app-003'
+
+  - deployment: TeardownApp004
+    displayName: 'Teardown App 004'
+    dependsOn: TeardownApp003
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/teardown-app.yml
+            parameters:
+              appId: '004'
+              serviceConnection: 'finops-demo-app-004'
+
+  - deployment: TeardownApp005
+    displayName: 'Teardown App 005'
+    dependsOn: TeardownApp004
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/teardown-app.yml
+            parameters:
+              appId: '005'
+              serviceConnection: 'finops-demo-app-005'

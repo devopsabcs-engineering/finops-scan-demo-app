@@ -1,0 +1,224 @@
+table Fact_FinOpsFindings
+	lineageTag: 66cbc04c-9e57-4dc4-9263-5022d2d2a830
+
+	measure 'Total Findings' = COUNTROWS(Fact_FinOpsFindings)
+		formatString: 0
+		lineageTag: 858a574b-a019-4fee-aba1-0f0dc8c21972
+
+	measure 'Open Findings' = CALCULATE(COUNTROWS(Fact_FinOpsFindings), Fact_FinOpsFindings[State] = "open")
+		formatString: 0
+		lineageTag: 2763dd4c-aa2b-4b40-af4e-3d9e7d38ccb1
+
+	measure 'Fixed Findings' = CALCULATE(COUNTROWS(Fact_FinOpsFindings), Fact_FinOpsFindings[State] = "fixed")
+		formatString: 0
+		lineageTag: 05efe465-4cee-4627-85c8-1db0bbd30206
+
+	measure 'Total Dismissed' = CALCULATE(COUNTROWS(Fact_FinOpsFindings), Fact_FinOpsFindings[State] = "dismissed")
+		formatString: 0
+		lineageTag: f46d8a1f-aeb6-4e9a-b5b9-8f828096ed23
+
+	measure 'Compliance Rate' = DIVIDE([Fixed Findings], [Fixed Findings] + [Open Findings] + [Total Dismissed], 0)
+		formatString: 0.0%
+		lineageTag: 5f5295fc-c630-4b9c-97b5-274be1701a92
+
+	measure 'Critical Findings' = CALCULATE(COUNTROWS(Fact_FinOpsFindings), Dim_Severity[Severity] = "Critical")
+		formatString: 0
+		lineageTag: 83213d34-4ce9-403d-a0fe-83e896c23d7c
+
+	measure 'Warning Findings' = CALCULATE(COUNTROWS(Fact_FinOpsFindings), Dim_Severity[Severity] = "Medium")
+		formatString: 0
+		lineageTag: 00ce4805-733b-4c61-a93d-f4ea5bb6aed5
+
+	measure 'Cost Savings Potential' = CALCULATE(SUM(Fact_FinOpsFindings[EstimatedSavings]), Fact_FinOpsFindings[State] = "open")
+		formatString: \$#,0.00;(\$#,0.00);\$#,0.00
+		lineageTag: 26ddf310-91c2-4978-8a4e-86958c70d59d
+
+	measure 'Repositories Scanned' = DISTINCTCOUNT(Fact_FinOpsFindings[RepositoryKey])
+		formatString: 0
+		lineageTag: d423f47e-2ff1-4759-9113-189564d502fc
+
+	measure 'Mean Time to Remediate' = AVERAGEX(FILTER(Fact_FinOpsFindings, NOT(ISBLANK(Fact_FinOpsFindings[FixedDate]))), DATEDIFF(Fact_FinOpsFindings[ScanDate], Fact_FinOpsFindings[FixedDate], DAY))
+		formatString: 0
+		lineageTag: d36382d3-9a76-48cc-89b6-21bb46fdaaa6
+
+	column FindingId
+		dataType: string
+		lineageTag: deaa617e-5c98-4a55-8250-59d542975724
+		summarizeBy: none
+		sourceColumn: FindingId
+
+	column RuleId
+		dataType: string
+		lineageTag: c7b60cf2-a731-48cd-aba7-3195fbfcfad7
+		summarizeBy: none
+		sourceColumn: RuleId
+
+	column RuleDescription
+		dataType: string
+		lineageTag: bd4f446d-92de-47bc-8e9c-b560ea8347c0
+		summarizeBy: none
+		sourceColumn: RuleDescription
+
+	column Severity
+		dataType: string
+		lineageTag: 132508b5-d396-491b-8b47-5162df16d7ac
+		summarizeBy: none
+		sourceColumn: Severity
+
+	column SeverityKey
+		dataType: string
+		lineageTag: d5956584-602e-4c5e-acce-43f050b4c789
+		summarizeBy: none
+		sourceColumn: SeverityKey
+
+	column State
+		dataType: string
+		lineageTag: c2fb6472-058c-4d3f-aa16-b1771539427b
+		summarizeBy: none
+		sourceColumn: State
+
+	column ToolName
+		dataType: string
+		lineageTag: 494bb9fd-8831-4425-9cc4-47e92dce1665
+		summarizeBy: none
+		sourceColumn: ToolName
+
+	column RepositoryKey
+		dataType: string
+		lineageTag: 37aa461c-4dfa-4e9a-a432-072182d6db8e
+		summarizeBy: none
+		sourceColumn: RepositoryKey
+
+	column ResourceName
+		dataType: string
+		lineageTag: fe8dc8a1-a390-46c0-a834-1afbbe927c65
+		summarizeBy: none
+		sourceColumn: ResourceName
+
+	column FilePath
+		dataType: string
+		lineageTag: dfd193cd-6544-40e1-8510-b4cd2af8e142
+		summarizeBy: none
+		sourceColumn: FilePath
+
+	column LineNumber
+		dataType: string
+		lineageTag: 9722da56-d5d6-4656-b0ff-8ee8451eb44f
+		summarizeBy: none
+		sourceColumn: LineNumber
+
+		annotation SummarizationSetBy = Automatic
+
+	column EstimatedSavings
+		dataType: string
+		lineageTag: c968f437-9987-4528-8bac-4024843a3600
+		summarizeBy: none
+		sourceColumn: EstimatedSavings
+
+		annotation SummarizationSetBy = Automatic
+
+	column ScanDate
+		dataType: string
+		lineageTag: b1d5adca-4942-4025-8121-bd920b6037b8
+		summarizeBy: none
+		sourceColumn: ScanDate
+
+	column FixedDate
+		dataType: string
+		lineageTag: 282946d7-18f0-44db-8e2f-d9d749024fb3
+		summarizeBy: none
+		sourceColumn: FixedDate
+
+	column ScanRunId
+		dataType: string
+		lineageTag: 64ed6ee9-8080-4ca3-90d3-92e68b1551f5
+		summarizeBy: none
+		sourceColumn: ScanRunId
+
+	column Name
+		dataType: string
+		lineageTag: 07604258-d022-487f-a795-e0a73aa2d386
+		summarizeBy: none
+		sourceColumn: Name
+
+		annotation SummarizationSetBy = Automatic
+
+	column Extension
+		dataType: string
+		lineageTag: 64100742-8fc3-4fc8-b1f5-007af8953dc3
+		summarizeBy: none
+		sourceColumn: Extension
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Date accessed'
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 8d6a488e-7c58-479b-a1e0-ef9101956f5f
+		summarizeBy: none
+		sourceColumn: Date accessed
+
+		variation Variation
+			isDefault
+			relationship: 96fb60e1-f065-4e63-932f-4eb00352d7c1
+			defaultHierarchy: LocalDateTable_e643536d-e282-43cb-9185-dc42476e1296.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Date modified'
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: fa8837e5-fbd5-4b17-bb65-4f95bba76926
+		summarizeBy: none
+		sourceColumn: Date modified
+
+		variation Variation
+			isDefault
+			relationship: 6a2f843f-617d-4c6e-a98b-1aa77714780e
+			defaultHierarchy: LocalDateTable_5fb52b5d-10d4-491f-aaf5-45031d493de6.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Date created'
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: bc8fa0ad-bf63-4c65-8d49-78f4c739fe64
+		summarizeBy: none
+		sourceColumn: Date created
+
+		variation Variation
+			isDefault
+			relationship: ed71c3ff-3336-46d5-9227-b6107cb106c2
+			defaultHierarchy: LocalDateTable_81e8c9aa-45f9-4942-a9c1-284404dd8916.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+	column 'Folder Path'
+		dataType: string
+		lineageTag: 8a4e81c7-f032-4ca8-96f9-529582e3c50f
+		summarizeBy: none
+		sourceColumn: Folder Path
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Fact_FinOpsFindings = m
+		mode: import
+		source =
+				let
+					StorageUrl = "https://" & StorageAccountName & ".blob.core.windows.net/" & ContainerName,
+					Source = AzureStorage.Blobs(StorageUrl),
+					FilteredRows = Table.SelectRows(Source, each Text.EndsWith([Name], ".json")),
+					ParsedContent = Table.AddColumn(FilteredRows, "ParsedJson", each let p = Json.Document([Content]) in if p is list then p else {p}),
+					ExpandedRows = Table.ExpandListColumn(ParsedContent, "ParsedJson"),
+					ExpandedCols = Table.ExpandRecordColumn(ExpandedRows, "ParsedJson",
+						{"FindingId", "RuleId", "RuleDescription", "Severity", "SeverityKey",
+						 "State", "ToolName", "RepositoryKey", "ResourceName",
+						 "FilePath", "LineNumber", "EstimatedSavings",
+						 "ScanDate", "FixedDate", "ScanRunId"})
+				in
+					ExpandedCols
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

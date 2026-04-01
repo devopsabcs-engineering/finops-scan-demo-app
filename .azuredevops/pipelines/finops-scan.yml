@@ -1,0 +1,308 @@
+# FinOps Scan Pipeline
+# Equivalent of .github/workflows/finops-scan.yml
+# Runs PSRule, Checkov, and Cloud Custodian scans across all 5 demo apps
+# Schedule: Weekly Monday 06:00 UTC
+
+trigger: none
+pr: none
+
+schedules:
+- cron: '0 6 * * Mon'
+  displayName: 'Weekly Monday 06:00 UTC FinOps Scan'
+  branches:
+    include:
+    - main
+  always: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+- group: finops-secrets
+- group: finops-oidc-config
+- group: wiki-access
+
+jobs:
+- job: PSRuleScan
+  displayName: 'PSRule Scan'
+  continueOnError: true
+  strategy:
+    matrix:
+      App001: { appId: '001' }
+      App002: { appId: '002' }
+      App003: { appId: '003' }
+      App004: { appId: '004' }
+      App005: { appId: '005' }
+  steps:
+  - checkout: self
+
+  - task: PowerShell@2
+    displayName: 'Install PSRule'
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        Install-Module PSRule.Rules.Azure -Force -Scope CurrentUser
+
+  - task: PowerShell@2
+    displayName: 'Run PSRule'
+    continueOnError: true
+    inputs:
+      targetType: inline
+      pwsh: true
+      script: |
+        mkdir -p reports
+        Invoke-PSRule -InputPath "finops-demo-app-$(appId)/infra/" `
+          -Module PSRule.Rules.Azure `
+          -OutputFormat Sarif `
+          -OutputPath "reports/psrule-$(appId).sarif" `
+          -Option src/config/ps-rule.yaml `
+          -Baseline Azure.GA_2024_12
+
+  - publish: reports/psrule-$(appId).sarif
+    artifact: sarif-psrule-$(appId)
+    displayName: 'Publish PSRule SARIF artifact'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish SARIF for viewer'
+    inputs:
+      pathToPublish: reports/psrule-$(appId).sarif
+      artifactName: CodeAnalysisLogs
+
+- job: CheckovScan
+  displayName: 'Checkov Scan'
+  continueOnError: true
+  strategy:
+    matrix:
+      App001: { appId: '001' }
+      App002: { appId: '002' }
+      App003: { appId: '003' }
+      App004: { appId: '004' }
+      App005: { appId: '005' }
+  steps:
+  - checkout: self
+
+  - task: Bash@3
+    displayName: 'Install Checkov'
+    inputs:
+      targetType: inline
+      script: |
+        pip install checkov
+
+  - task: Bash@3
+    displayName: 'Run Checkov'
+    continueOnError: true
+    inputs:
+      targetType: inline
+      script: |
+        mkdir -p reports
+        checkov -d "finops-demo-app-$(appId)/infra/" \
+          --framework bicep \
+          -o sarif \
+          --output-file-path reports/ \
+          --soft-fail
+        # Rename to consistent naming
+        if [ -f "reports/results_sarif.sarif" ]; then
+          mv reports/results_sarif.sarif "reports/checkov-$(appId).sarif"
+        fi
+
+  - publish: reports/checkov-$(appId).sarif
+    artifact: sarif-checkov-$(appId)
+    displayName: 'Publish Checkov SARIF artifact'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish SARIF for viewer'
+    inputs:
+      pathToPublish: reports/checkov-$(appId).sarif
+      artifactName: CodeAnalysisLogs
+
+- job: CustodianScan
+  displayName: 'Cloud Custodian Scan'
+  continueOnError: true
+  strategy:
+    matrix:
+      App001: { appId: '001' }
+      App002: { appId: '002' }
+      App003: { appId: '003' }
+      App004: { appId: '004' }
+      App005: { appId: '005' }
+  steps:
+  - checkout: self
+
+  - task: Bash@3
+    displayName: 'Install Cloud Custodian'
+    inputs:
+      targetType: inline
+      script: |
+        pip install c7n c7n-azure
+
+  - task: AzureCLI@2
+    displayName: 'Run Cloud Custodian'
+    continueOnError: true
+    inputs:
+      azureSubscription: 'finops-scanner-ado'
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        mkdir -p output reports
+
+        for policy_file in src/config/custodian/*.yml; do
+          echo "Running: $(basename $policy_file)"
+          custodian run -s output/ "$policy_file" --cache-period 0 2>&1 || true
+        done
+
+        echo "=== Custodian output ==="
+        find output/ -name "resources.json" -exec sh -c 'echo "  $(dirname {} | xargs basename): $(cat {} | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0) resources"' \;
+        echo "Custodian scan complete for app $(appId)"
+
+  - task: Bash@3
+    displayName: 'Convert to SARIF'
+    inputs:
+      targetType: inline
+      script: |
+        mkdir -p reports
+        if [ -d "output/" ] && [ "$(ls -A output/)" ]; then
+          python src/converters/custodian-to-sarif.py output/ "reports/custodian-$(appId).sarif" \
+            --resource-group "rg-finops-demo-$(appId)"
+        else
+          echo "No custodian output to convert, creating empty SARIF"
+          echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"custodian-to-sarif","version":"1.0.0","informationUri":"https://cloudcustodian.io","rules":[]}},"results":[]}]}' > "reports/custodian-$(appId).sarif"
+        fi
+
+  - publish: reports/custodian-$(appId).sarif
+    artifact: sarif-custodian-$(appId)
+    displayName: 'Publish Custodian SARIF artifact'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish SARIF for viewer'
+    inputs:
+      pathToPublish: reports/custodian-$(appId).sarif
+      artifactName: CodeAnalysisLogs
+
+# ---------------------------------------------------------------------------
+# Cross-repo SARIF upload — push SARIF files to each demo app repo
+# Equivalent of GitHub's cross-repo-upload job that uploads SARIF to each
+# demo app's Code Scanning tab via the GitHub REST API.
+# ADO approach: push SARIF to a /sarif-results/ folder in each demo app repo.
+# ---------------------------------------------------------------------------
+- job: CrossRepoSarifUpload
+  displayName: 'Push SARIF to Demo App Repos'
+  dependsOn:
+  - PSRuleScan
+  - CheckovScan
+  - CustodianScan
+  condition: always()
+  strategy:
+    matrix:
+      App001: { appId: '001' }
+      App002: { appId: '002' }
+      App003: { appId: '003' }
+      App004: { appId: '004' }
+      App005: { appId: '005' }
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download PSRule SARIF'
+    continueOnError: true
+    inputs:
+      artifact: sarif-psrule-$(appId)
+      path: $(Pipeline.Workspace)/sarif
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Checkov SARIF'
+    continueOnError: true
+    inputs:
+      artifact: sarif-checkov-$(appId)
+      path: $(Pipeline.Workspace)/sarif
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Custodian SARIF'
+    continueOnError: true
+    inputs:
+      artifact: sarif-custodian-$(appId)
+      path: $(Pipeline.Workspace)/sarif
+
+  - script: |
+      set -e
+      APP_REPO="finops-demo-app-$(appId)"
+      REPO_URL="https://$(WIKI_PAT)@dev.azure.com/MngEnvMCAP675646/FinOps/_git/${APP_REPO}"
+      SARIF_DIR="$(Pipeline.Workspace)/sarif"
+      BUILD_ID="$(Build.BuildId)"
+
+      if [ ! -d "$SARIF_DIR" ] || [ -z "$(ls -A $SARIF_DIR 2>/dev/null)" ]; then
+        echo "No SARIF files to upload for app $(appId)"
+        exit 0
+      fi
+
+      echo "Cloning ${APP_REPO}..."
+      git clone --depth 1 "$REPO_URL" repo 2>&1 || {
+        echo "Could not clone ${APP_REPO}, skipping SARIF upload"
+        exit 0
+      }
+
+      mkdir -p repo/sarif-results repo/.azuredevops/pipelines
+
+      # Copy SARIF files
+      cp "$SARIF_DIR"/*.sarif repo/sarif-results/ 2>/dev/null || true
+
+      # Create publish-sarif pipeline if it doesn't exist
+      cat > repo/.azuredevops/pipelines/publish-sarif.yml <<'PIPELINEEOF'
+      trigger:
+        paths:
+          include:
+          - sarif-results/*
+
+      pool:
+        vmImage: 'ubuntu-latest'
+
+      steps:
+      - checkout: self
+
+      - task: AdvancedSecurity-Publish@1
+        displayName: 'Publish SARIF to Advanced Security'
+        inputs:
+          SarifsInputDirectory: '$(Build.SourcesDirectory)/sarif-results'
+      PIPELINEEOF
+      sed -i 's/^      //' repo/.azuredevops/pipelines/publish-sarif.yml
+
+      cd repo
+      git config user.email "pipeline@dev.azure.com"
+      git config user.name "Azure Pipeline"
+      git add sarif-results/ .azuredevops/
+      git diff --cached --quiet && echo "No new SARIF results" || {
+        git commit -m "Update FinOps scan results (build ${BUILD_ID})"
+        git push origin main
+        echo "SARIF pushed to ${APP_REPO}"
+      }
+    displayName: 'Push SARIF and publish pipeline to demo app repo'
+    continueOnError: true
+
+  - script: |
+      APP_REPO="finops-demo-app-$(appId)"
+
+      # Check if publish-sarif pipeline exists in ADO, create if not
+      PIPELINE_EXISTS=$(az pipelines show --name "publish-sarif-$(appId)" --project FinOps --org https://dev.azure.com/MngEnvMCAP675646 -o tsv --query id 2>/dev/null || echo "")
+      if [ -z "$PIPELINE_EXISTS" ]; then
+        echo "Creating publish-sarif pipeline for ${APP_REPO}..."
+        az pipelines create \
+          --name "publish-sarif-$(appId)" \
+          --yml-path ".azuredevops/pipelines/publish-sarif.yml" \
+          --repository "$APP_REPO" \
+          --repository-type tfsgit \
+          --branch main \
+          --skip-first-run \
+          --project FinOps \
+          --org https://dev.azure.com/MngEnvMCAP675646 \
+          -o none 2>&1 || echo "Could not create pipeline"
+      fi
+
+      # Trigger the publish-sarif pipeline
+      echo "Triggering publish-sarif pipeline for ${APP_REPO}..."
+      az pipelines run \
+        --name "publish-sarif-$(appId)" \
+        --project FinOps \
+        --org https://dev.azure.com/MngEnvMCAP675646 \
+        -o none 2>&1 || echo "Could not trigger pipeline (may need to be created first)"
+    displayName: 'Trigger SARIF publish in demo app repo'
+    continueOnError: true
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(WIKI_PAT)

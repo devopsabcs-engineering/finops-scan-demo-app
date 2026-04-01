@@ -1,0 +1,14 @@
+expression StorageAccountName = "finopsscanstore2497" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 0eaaa0c4-1259-49b9-ad6d-e9736585469b
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Text
+
+expression ContainerName = "finops-scan-results" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 938d6911-b840-49bf-b6cf-adbe8a302710
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Text
+
