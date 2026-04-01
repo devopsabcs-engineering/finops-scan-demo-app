@@ -1,0 +1,101 @@
+table Dim_Date
+	lineageTag: 9d01ae37-715f-4669-8fbd-89dddeacb40a
+
+	column Date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: 2d4f0566-7494-418f-831f-ab9fe2ed1fd6
+		summarizeBy: none
+		sourceColumn: Date
+
+		variation Variation
+			isDefault
+			relationship: 203ddf2a-3cbf-4b8e-b546-c8b3b5e9811d
+			defaultHierarchy: LocalDateTable_8b4da40d-c0a3-474b-bf05-f07a4dd8b2c6.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Year
+		dataType: int64
+		formatString: 0
+		lineageTag: 133785c0-d0d5-421f-8bd3-a765721bc5d2
+		summarizeBy: sum
+		sourceColumn: Year
+
+		annotation SummarizationSetBy = Automatic
+
+	column Month
+		dataType: int64
+		formatString: 0
+		lineageTag: 6cd9e654-5002-423d-b0f0-4f14f8ae2b87
+		summarizeBy: sum
+		sourceColumn: Month
+
+		annotation SummarizationSetBy = Automatic
+
+	column MonthName
+		dataType: string
+		lineageTag: dc855322-cb41-4eba-9714-3aa9ae117e8e
+		summarizeBy: none
+		sourceColumn: MonthName
+
+	column Day
+		dataType: int64
+		formatString: 0
+		lineageTag: 45341ef3-c8f6-47f7-9178-2c36c279b748
+		summarizeBy: sum
+		sourceColumn: Day
+
+		annotation SummarizationSetBy = Automatic
+
+	column Quarter
+		dataType: int64
+		formatString: 0
+		lineageTag: b3bbbb05-f48f-47d8-b58a-7ea6a2313011
+		summarizeBy: sum
+		sourceColumn: Quarter
+
+		annotation SummarizationSetBy = Automatic
+
+	column WeekDay
+		dataType: int64
+		formatString: 0
+		lineageTag: 0f2bfc65-200f-4ddf-b412-e9a1b8c21a65
+		summarizeBy: sum
+		sourceColumn: WeekDay
+
+		annotation SummarizationSetBy = Automatic
+
+	column WeekNum
+		dataType: int64
+		formatString: 0
+		lineageTag: b6d179cd-6f4f-4ae8-a364-ba084a346ecc
+		summarizeBy: sum
+		sourceColumn: WeekNum
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Dim_Date = m
+		mode: import
+		source =
+				let
+					StartDate = #date(2024, 1, 1),
+					EndDate = #date(2027, 12, 31),
+					DayCount = Duration.Days(EndDate - StartDate) + 1,
+					DateList = List.Dates(StartDate, DayCount, #duration(1, 0, 0, 0)),
+					TableFromList = Table.FromList(DateList, Splitter.SplitByNothing(), {"Date"}, null, ExtraValues.Error),
+					ChangedType = Table.TransformColumnTypes(TableFromList, {{"Date", type date}}),
+					AddYear = Table.AddColumn(ChangedType, "Year", each Date.Year([Date]), Int64.Type),
+					AddMonth = Table.AddColumn(AddYear, "Month", each Date.Month([Date]), Int64.Type),
+					AddMonthName = Table.AddColumn(AddMonth, "MonthName", each Date.MonthName([Date]), type text),
+					AddDay = Table.AddColumn(AddMonthName, "Day", each Date.Day([Date]), Int64.Type),
+					AddQuarter = Table.AddColumn(AddDay, "Quarter", each Date.QuarterOfYear([Date]), Int64.Type),
+					AddWeekDay = Table.AddColumn(AddQuarter, "WeekDay", each Date.DayOfWeek([Date]), Int64.Type),
+					AddWeekNum = Table.AddColumn(AddWeekDay, "WeekNum", each Date.WeekOfYear([Date]), Int64.Type)
+				in
+					AddWeekNum
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

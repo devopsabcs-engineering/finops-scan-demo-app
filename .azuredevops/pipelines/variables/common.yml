@@ -1,0 +1,13 @@
+# Shared Pipeline Variables
+# Referenced by multiple ADO pipelines via template inclusion
+# Variable groups (finops-oidc-config, finops-secrets) are created by the bootstrap script
+
+variables:
+- group: finops-oidc-config
+- group: finops-secrets
+- name: azureRegion
+  value: 'canadacentral'
+- name: resourceGroupPrefix
+  value: 'rg-finops-demo-'
+- name: appIds
+  value: '001,002,003,004,005'

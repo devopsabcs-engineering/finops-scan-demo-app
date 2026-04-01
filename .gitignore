@@ -9,6 +9,10 @@
 # copilot tracking files
 .copilot-tracking/
 
+# Power BI Desktop local files
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+
 # FinOps scan generated outputs
 output/
 reports/

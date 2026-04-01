@@ -1,0 +1,40 @@
+relationship c01db050-3328-42b1-9929-7e3d6339281b
+	fromColumn: Fact_FinOpsFindings.ScanDate
+	toColumn: Dim_Date.Date
+
+relationship 6d3dfff8-702a-47f0-b385-b1917989bc87
+	fromColumn: Fact_FinOpsFindings.SeverityKey
+	toColumn: Dim_Severity.SeverityKey
+
+relationship 236cd44d-f249-4186-8fd1-5ead3ac2d43f
+	fromColumn: Fact_FinOpsFindings.ToolName
+	toColumn: Dim_Tool.ToolKey
+
+relationship 810d1f37-dabd-421a-94aa-1f04c7048a43
+	fromColumn: Fact_FinOpsFindings.RuleId
+	toColumn: Dim_Rule.RuleId
+
+relationship 466bb4c7-7526-43f1-ab65-0ea70d889637
+	fromColumn: Fact_FinOpsFindings.RepositoryKey
+	toColumn: Dim_Repository.RepositoryKey
+
+relationship 203ddf2a-3cbf-4b8e-b546-c8b3b5e9811d
+	joinOnDateBehavior: datePartOnly
+	fromColumn: Dim_Date.Date
+	toColumn: LocalDateTable_8b4da40d-c0a3-474b-bf05-f07a4dd8b2c6.Date
+
+relationship 96fb60e1-f065-4e63-932f-4eb00352d7c1
+	joinOnDateBehavior: datePartOnly
+	fromColumn: Fact_FinOpsFindings.'Date accessed'
+	toColumn: LocalDateTable_e643536d-e282-43cb-9185-dc42476e1296.Date
+
+relationship 6a2f843f-617d-4c6e-a98b-1aa77714780e
+	joinOnDateBehavior: datePartOnly
+	fromColumn: Fact_FinOpsFindings.'Date modified'
+	toColumn: LocalDateTable_5fb52b5d-10d4-491f-aaf5-45031d493de6.Date
+
+relationship ed71c3ff-3336-46d5-9227-b6107cb106c2
+	joinOnDateBehavior: datePartOnly
+	fromColumn: Fact_FinOpsFindings.'Date created'
+	toColumn: LocalDateTable_81e8c9aa-45f9-4942-a9c1-284404dd8916.Date
+

@@ -51,12 +51,23 @@ Each demo app is deployed to `canadacentral` in its own resource group (`rg-fino
 
 ## Prerequisites
 
+### Common
+
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) v2.50+
-- [GitHub CLI](https://cli.github.com/) v2.40+
 - [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) v7.3+
 - Azure subscription with Contributor access
-- GitHub organization admin access to `devopsabcs-engineering`
 - [Infracost](https://www.infracost.io/docs/) API key (free tier available — see [Secrets Configuration](#secrets-configuration))
+
+### GitHub
+
+- [GitHub CLI](https://cli.github.com/) v2.40+
+- GitHub organization admin access to `devopsabcs-engineering`
+
+### Azure DevOps
+
+- Azure CLI `azure-devops` extension (`az extension add --name azure-devops`)
+- Azure DevOps PAT with Full access, or scoped to: Project (Read/Write), Build (Read/Execute), Service Connections (Read/Write/Manage), Variable Groups (Read/Create/Manage)
+- Project admin access to `MngEnvMCAP675646/FinOps`
 
 ## Secrets Configuration
 
@@ -152,7 +163,7 @@ A GitHub Personal Access Token (classic) is needed for cross-repo operations.
 
 The bootstrap script prompts for this with a suggested default (`F1nOps#Demo2026!`).
 
-## Quick Start
+## Quick Start (GitHub)
 
 ### 1. Set up Azure OIDC federation
 
@@ -210,6 +221,98 @@ gh workflow run teardown-all.yml --repo devopsabcs-engineering/finops-scan-demo-
 
 Requires manual approval via the `production` environment protection rule before deleting resource groups.
 
+## Quick Start (Azure DevOps)
+
+These steps set up the equivalent FinOps scanning infrastructure in Azure DevOps using the `MngEnvMCAP675646/FinOps` organization and project.
+
+### 1. Install the Azure DevOps CLI extension
+
+```powershell
+az extension add --name azure-devops
+```
+
+### 2. Authenticate
+
+```powershell
+# Log in to Azure (needed for app registration, role assignments, resource access)
+az login
+
+# Log in to Azure DevOps (prompts for PAT)
+az devops login
+```
+
+### 3. Set up ADO OIDC federation
+
+Creates the `ado-finops-scanner` Azure AD app registration with 6 federated credentials (one per service connection) using the ADO-specific issuer (`vstoken.dev.azure.com`) and subject format (`sc://`):
+
+```powershell
+./scripts/setup-oidc-ado.ps1
+```
+
+The script outputs `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` values needed for the next step.
+
+### 4. Bootstrap ADO project
+
+Creates variable groups, Workload Identity Federation service connections, environments, pipelines, and a project wiki:
+
+```powershell
+./scripts/bootstrap-demo-apps-ado.ps1
+```
+
+The script prompts for `INFRACOST_API_KEY` and `VM_ADMIN_PASSWORD` if not set as environment variables. It also calls `setup-oidc-ado.ps1` automatically if Azure CLI is logged in.
+
+> **Tip:** Set environment variables for non-interactive use:
+>
+> ```powershell
+> $env:AZURE_CLIENT_ID = '<value-from-step-3>'
+> $env:AZURE_TENANT_ID = '<your-tenant-id>'
+> $env:AZURE_SUBSCRIPTION_ID = '<your-subscription-id>'
+> $env:INFRACOST_API_KEY = '<your-infracost-key>'
+> $env:VM_ADMIN_PASSWORD = '<your-vm-password>'
+> ```
+
+### 5. Configure manual settings
+
+Two items require manual configuration in the ADO project settings:
+
+**Environment approval checks:**
+
+1. Go to **Project Settings** > **Environments** > `production`.
+2. Click **Add check** > **Approvals**.
+3. Add the required approvers.
+
+**Branch policy for cost gate:**
+
+1. Go to **Project Settings** > **Repos** > **Policies** > `main` branch.
+2. Click **Add build validation**.
+3. Select the `finops-cost-gate` pipeline with path filter `/infra/**`.
+
+### 6. Verify setup
+
+```powershell
+# List registered pipelines
+az pipelines list --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps -o table
+
+# List variable groups
+az pipelines variable-group list --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps -o table
+
+# List service connections
+az devops service-endpoint list --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps -o table
+```
+
+### 7. Run pipelines
+
+```powershell
+# Deploy all demo apps
+az pipelines run --name deploy-all --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps
+
+# Run FinOps scan
+az pipelines run --name finops-scan --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps
+
+# Teardown (requires production environment approval)
+az pipelines run --name teardown-all --org https://dev.azure.com/MngEnvMCAP675646 --project FinOps
+```
+
 ## Project Structure
 
 ```text
@@ -239,15 +342,29 @@ finops-scan-demo-app/
 │           ├── tagging-compliance.yml
 │           ├── right-sizing.yml
 │           └── idle-resources.yml
+├── .azuredevops/
+│   └── pipelines/
+│       ├── finops-scan.yml          # ADO: Central scan (PSRule+Checkov+Custodian)
+│       ├── finops-cost-gate.yml     # ADO: PR cost gate (Infracost, branch policy)
+│       ├── deploy-all.yml           # ADO: Deploy all 5 demo apps
+│       ├── teardown-all.yml         # ADO: Teardown with environment approval
+│       ├── templates/
+│       │   ├── deploy-app.yml       # ADO: Parameterized per-app deploy
+│       │   └── teardown-app.yml     # ADO: Parameterized per-app teardown
+│       └── variables/
+│           └── common.yml           # ADO: Shared pipeline variables
 ├── scripts/
-│   ├── bootstrap-demo-apps.ps1      # Create repos, push content, set secrets
-│   └── setup-oidc.ps1               # Azure AD OIDC federation (6 repos)
+│   ├── bootstrap-demo-apps.ps1      # GitHub: Create repos, push content, set secrets
+│   ├── bootstrap-demo-apps-ado.ps1  # ADO: Variable groups, service connections, pipelines
+│   ├── setup-oidc.ps1               # GitHub: Azure AD OIDC federation (11 credentials)
+│   └── setup-oidc-ado.ps1           # ADO: Azure AD OIDC federation (6 credentials)
 ├── finops-demo-app-001/             # Demo app source (Missing Tags)
 ├── finops-demo-app-002/             # Demo app source (Oversized Resources)
 ├── finops-demo-app-003/             # Demo app source (Orphaned Resources)
 ├── finops-demo-app-004/             # Demo app source (No Auto-Shutdown)
 ├── finops-demo-app-005/             # Demo app source (Redundant/Expensive)
 ├── docs/                            # Power BI data model + dashboard docs
+│   └── finops-power-bi-implementation.md  # Consolidated Power BI implementation design
 └── README.md
 ```
 

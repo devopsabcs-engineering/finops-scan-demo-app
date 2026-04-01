@@ -1,0 +1,28 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-US
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation PBI_ProTooling = ["DevMode"]
+
+annotation PBI_QueryOrder = ["Dim_Date","Dim_Repository","Dim_Rule","Dim_Severity","Dim_Tool","Fact_FinOpsFindings","StorageAccountName","ContainerName"]
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+ref table Dim_Date
+ref table Dim_Repository
+ref table Dim_Rule
+ref table Dim_Severity
+ref table Dim_Tool
+ref table Fact_FinOpsFindings
+ref table DateTableTemplate_61d6685c-98ba-4ce7-a539-6fcc7826b995
+ref table LocalDateTable_8b4da40d-c0a3-474b-bf05-f07a4dd8b2c6
+ref table LocalDateTable_e643536d-e282-43cb-9185-dc42476e1296
+ref table LocalDateTable_5fb52b5d-10d4-491f-aaf5-45031d493de6
+ref table LocalDateTable_81e8c9aa-45f9-4942-a9c1-284404dd8916
+
+ref cultureInfo en-US
+

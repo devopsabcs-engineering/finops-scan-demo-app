@@ -1,0 +1,40 @@
+table Dim_Rule
+	lineageTag: d1ac60bd-b6bc-4ddd-9462-62965612e6b0
+
+	column RuleId
+		dataType: string
+		lineageTag: 9731db3a-9996-4b74-8f82-849a4998cd81
+		summarizeBy: none
+		sourceColumn: RuleId
+
+	column RuleDescription
+		dataType: string
+		lineageTag: acaee626-c184-43d5-bf24-398d79ad0a08
+		summarizeBy: none
+		sourceColumn: RuleDescription
+
+	column RuleCategory
+		dataType: string
+		lineageTag: d0934be0-dbfb-4bc0-befc-b241c266acc1
+		summarizeBy: none
+		sourceColumn: RuleCategory
+
+	partition Dim_Rule = m
+		mode: import
+		source =
+				let
+					StorageUrl = "https://" & StorageAccountName & ".blob.core.windows.net/" & ContainerName,
+					Source = AzureStorage.Blobs(StorageUrl),
+					FilteredRows = Table.SelectRows(Source, each Text.EndsWith([Name], ".json")),
+					ParsedContent = Table.AddColumn(FilteredRows, "ParsedJson", each let p = Json.Document([Content]) in if p is list then p else {p}),
+					ExpandedRows = Table.ExpandListColumn(ParsedContent, "ParsedJson"),
+					ExpandedCols = Table.ExpandRecordColumn(ExpandedRows, "ParsedJson", {"RuleId", "RuleDescription", "RuleCategory"}),
+					SelectedCols = Table.SelectColumns(ExpandedCols, {"RuleId", "RuleDescription", "RuleCategory"}),
+					UniqueRules = Table.Distinct(SelectedCols, {"RuleId"})
+				in
+					UniqueRules
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

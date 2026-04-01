@@ -1,0 +1,53 @@
+table Dim_Tool
+	lineageTag: 596d1d7d-0d38-400e-884f-f280b7c24754
+
+	column ToolKey
+		dataType: string
+		lineageTag: f396fb15-4111-4bca-a116-e1d2719bbd56
+		summarizeBy: none
+		sourceColumn: ToolKey
+
+	column ToolName
+		dataType: string
+		lineageTag: 75af2906-3a15-430c-9daf-d4d1d8ec4259
+		summarizeBy: none
+		sourceColumn: ToolName
+
+	column ToolVersion
+		dataType: string
+		lineageTag: 40576f1d-7be9-4cd1-a260-cf299ada2634
+		summarizeBy: none
+		sourceColumn: ToolVersion
+
+	column ToolDescription
+		dataType: string
+		lineageTag: 197aa038-6cc7-48f7-9384-5de4f0fee908
+		summarizeBy: none
+		sourceColumn: ToolDescription
+
+	partition Dim_Tool = m
+		mode: import
+		source =
+				let
+					Source = Table.FromRows(
+						{
+							{"psrule", "PSRule", "2.9.0", "Azure Well-Architected Framework rules for IaC"},
+							{"checkov", "Checkov", "3.2", "Policy-as-code for IaC security and compliance"},
+							{"custodian", "Cloud Custodian", "0.9.x", "Cloud Custodian runtime governance policies"},
+							{"infracost", "Infracost", "0.10.x", "Infrastructure cost estimation and optimization"}
+						},
+						{"ToolKey", "ToolName", "ToolVersion", "ToolDescription"}
+					),
+					ChangedTypes = Table.TransformColumnTypes(Source, {
+						{"ToolKey", type text},
+						{"ToolName", type text},
+						{"ToolVersion", type text},
+						{"ToolDescription", type text}
+					})
+				in
+					ChangedTypes
+
+	annotation PBI_NavigationStepName = Navigation
+
+	annotation PBI_ResultType = Table
+

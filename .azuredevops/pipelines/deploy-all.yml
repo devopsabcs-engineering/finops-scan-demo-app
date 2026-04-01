@@ -1,0 +1,222 @@
+# Deploy All Demo Apps Pipeline
+# Equivalent of .github/workflows/deploy-all.yml
+# Deploys all 5 demo apps in parallel using parameterized template
+
+trigger: none
+pr: none
+
+parameters:
+- name: apps
+  displayName: 'Apps to deploy (comma-separated, or "all")'
+  type: string
+  default: 'all'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+- group: finops-oidc-config
+- group: finops-secrets
+- group: wiki-access
+
+stages:
+- stage: DeployStorage
+  displayName: 'Deploy FinOps Storage Account'
+  jobs:
+  - job: DeployStorageAccount
+    displayName: 'Deploy storage.bicep'
+    steps:
+    - checkout: self
+    - task: AzureCLI@2
+      displayName: 'Create storage resource group'
+      inputs:
+        azureSubscription: 'finops-scanner-ado'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az group create \
+            --name "rg-finops-storage" \
+            --location "canadacentral" \
+            --tags \
+              CostCenter="CC-0001" \
+              Owner="finops-team@contoso.com" \
+              Environment="prod" \
+              Application="finops-scanner" \
+              Department="Engineering" \
+              Project="FinOps-Scanner" \
+              ManagedBy="Bicep"
+    - task: AzureResourceManagerTemplateDeployment@3
+      displayName: 'Deploy storage.bicep'
+      name: deployStorage
+      inputs:
+        azureResourceManagerConnection: 'finops-scanner-ado'
+        resourceGroupName: 'rg-finops-storage'
+        location: 'canadacentral'
+        csmFile: 'infra/storage.bicep'
+        deploymentMode: 'Incremental'
+        overrideParameters: '-storageAccountName finopsscanstore$(Build.BuildId)'
+    - task: AzureCLI@2
+      displayName: 'Output storage account details'
+      inputs:
+        azureSubscription: 'finops-scanner-ado'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          echo "Storage account deployed to resource group: rg-finops-storage"
+          ACCT=$(az storage account list --resource-group rg-finops-storage --query '[0].{name:name, blob:primaryEndpoints.blob}' -o table)
+          echo "$ACCT"
+          echo ""
+          echo "IMPORTANT: Assign 'Storage Blob Data Contributor' to the pipeline SP"
+          echo "via Azure Portal > Storage Account > Access Control (IAM)"
+          echo "SP Object ID: $(az ad sp show --id $(az account show --query user.name -o tsv) --query id -o tsv)"
+
+- stage: Deploy
+  displayName: 'Deploy All Demo Apps'
+  dependsOn: DeployStorage
+  jobs:
+  - job: DeployApp001
+    displayName: 'Deploy App 001'
+    condition: or(eq('${{ parameters.apps }}', 'all'), contains('${{ parameters.apps }}', '001'))
+    steps:
+    - template: templates/deploy-app.yml
+      parameters:
+        appId: '001'
+        serviceConnection: 'finops-demo-app-001'
+
+  - job: DeployApp002
+    displayName: 'Deploy App 002'
+    condition: or(eq('${{ parameters.apps }}', 'all'), contains('${{ parameters.apps }}', '002'))
+    steps:
+    - template: templates/deploy-app.yml
+      parameters:
+        appId: '002'
+        serviceConnection: 'finops-demo-app-002'
+
+  - job: DeployApp003
+    displayName: 'Deploy App 003'
+    condition: or(eq('${{ parameters.apps }}', 'all'), contains('${{ parameters.apps }}', '003'))
+    steps:
+    - template: templates/deploy-app.yml
+      parameters:
+        appId: '003'
+        serviceConnection: 'finops-demo-app-003'
+
+  - job: DeployApp004
+    displayName: 'Deploy App 004'
+    condition: or(eq('${{ parameters.apps }}', 'all'), contains('${{ parameters.apps }}', '004'))
+    steps:
+    - template: templates/deploy-app.yml
+      parameters:
+        appId: '004'
+        serviceConnection: 'finops-demo-app-004'
+
+  - job: DeployApp005
+    displayName: 'Deploy App 005'
+    condition: or(eq('${{ parameters.apps }}', 'all'), contains('${{ parameters.apps }}', '005'))
+    steps:
+    - template: templates/deploy-app.yml
+      parameters:
+        appId: '005'
+        serviceConnection: 'finops-demo-app-005'
+
+  - job: Summary
+    displayName: 'Deployment Summary'
+    dependsOn:
+    - DeployApp001
+    - DeployApp002
+    - DeployApp003
+    - DeployApp004
+    - DeployApp005
+    condition: always()
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Generate deployment summary'
+      inputs:
+        azureSubscription: 'finops-scanner-ado'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          SUMMARY_FILE="$(Build.ArtifactStagingDirectory)/deployment-summary.md"
+          BUILD_ID="$(Build.BuildId)"
+          BUILD_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=${BUILD_ID}"
+          DEPLOY_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+          echo "## All Demo Apps Deployment Summary" > "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "| App | Violation | Status | Resource Group | Web App URL |" >> "$SUMMARY_FILE"
+          echo "|-----|-----------|--------|---------------|-------------|" >> "$SUMMARY_FILE"
+
+          declare -A VIOLATIONS
+          VIOLATIONS[001]="Missing Tags"
+          VIOLATIONS[002]="Oversized Resources"
+          VIOLATIONS[003]="Orphaned Resources"
+          VIOLATIONS[004]="No Auto-Shutdown"
+          VIOLATIONS[005]="Redundant Resources"
+
+          for APP in 001 002 003 004 005; do
+            RG="rg-finops-demo-${APP}"
+            if az group exists --name "$RG" 2>/dev/null | grep -q true; then
+              APP_URL=$(az webapp list --resource-group "$RG" --query '[0].defaultHostName' -o tsv 2>/dev/null || echo "")
+              if [ -n "$APP_URL" ]; then
+                STATUS="Deployed"
+                URL_CELL="[https://${APP_URL}](https://${APP_URL})"
+              else
+                STATUS="Deployed (no web app)"
+                URL_CELL="N/A"
+              fi
+            else
+              STATUS="Not deployed"
+              URL_CELL="N/A"
+            fi
+            echo "| **${APP}** | ${VIOLATIONS[$APP]} | ${STATUS} | ${RG} | ${URL_CELL} |" >> "$SUMMARY_FILE"
+          done
+
+          echo "" >> "$SUMMARY_FILE"
+          echo "_Deployed: ${DEPLOY_DATE}_" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "_Pipeline Run: [Run ${BUILD_ID}](${BUILD_URL})_" >> "$SUMMARY_FILE"
+
+          echo "##vso[task.uploadsummary]$SUMMARY_FILE"
+
+    - script: |
+        set -e
+        BUILD_ID="$(Build.BuildId)"
+        BUILD_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=${BUILD_ID}"
+        DEPLOY_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
+        SUMMARY_FILE="$(Build.ArtifactStagingDirectory)/deployment-summary.md"
+        WIKI_REPO="https://$(WIKI_PAT)@dev.azure.com/MngEnvMCAP675646/FinOps/_git/FinOps.wiki"
+
+        git clone --depth 1 "$WIKI_REPO" wiki
+        mkdir -p wiki/Deployments
+
+        BOLD='**'
+        cat > wiki/Deployments.md <<EOF
+        # FinOps Demo App Deployments
+
+        ${BOLD}Last Deploy-All Run:${BOLD} [Run ${BUILD_ID}](${BUILD_URL})
+
+        ${BOLD}Date:${BOLD} ${DEPLOY_DATE}
+
+        $(cat "$SUMMARY_FILE" 2>/dev/null || echo "No summary available")
+
+        ## Individual Deployment Pages
+
+        - [finops-demo-app-001](/Deployments/finops-demo-app-001)
+        - [finops-demo-app-002](/Deployments/finops-demo-app-002)
+        - [finops-demo-app-003](/Deployments/finops-demo-app-003)
+        - [finops-demo-app-004](/Deployments/finops-demo-app-004)
+        - [finops-demo-app-005](/Deployments/finops-demo-app-005)
+        EOF
+        sed -i 's/^        //g' wiki/Deployments.md
+
+        cd wiki
+        git config user.email "pipeline@dev.azure.com"
+        git config user.name "Azure Pipeline"
+        git add -A
+        git diff --cached --quiet && echo "No wiki changes" || {
+          git commit -m "Update Deployments page (build ${BUILD_ID})"
+          git push origin wikiMaster
+          echo "Wiki Deployments page updated"
+        }
+      displayName: 'Update central wiki Deployments page'
+      continueOnError: true

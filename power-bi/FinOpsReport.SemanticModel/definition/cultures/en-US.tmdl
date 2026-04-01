@@ -1,0 +1,95 @@
+cultureInfo en-US
+
+	linguisticMetadata =
+			{
+			  "Version": "2.0.0",
+			  "Language": "en-US",
+			  "Entities": {
+			    "fact_finopsfindings.compliance_rate": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "Fact_FinOpsFindings",
+			          "ConceptualProperty": "Compliance Rate"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Compliance Rate": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "fact_finopsfindings.open_findings": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "Fact_FinOpsFindings",
+			          "ConceptualProperty": "Open Findings"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Open Findings": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "fact_finopsfindings.repositories_scanned": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "Fact_FinOpsFindings",
+			          "ConceptualProperty": "Repositories Scanned"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Repositories Scanned": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "fact_finopsfindings.total_findings": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "Fact_FinOpsFindings",
+			          "ConceptualProperty": "Total Findings"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Total Findings": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    }
+			  }
+			}
+		contentType: json
+

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "FinOpsReport"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "de19878e-2bcf-4ea1-9b03-55a56a2a6e9a"
+  }
+}
