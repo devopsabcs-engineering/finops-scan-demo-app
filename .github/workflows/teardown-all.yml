@@ -2,6 +2,21 @@ name: Teardown All Demo Apps
 
 on:
   workflow_dispatch:
+    inputs:
+      delete_storage:
+        description: 'Delete the storage account resource group (rg-finops-storage)'
+        required: false
+        type: boolean
+        default: true
+      storage_rg_name:
+        description: 'Storage account resource group name'
+        required: false
+        type: string
+        default: 'rg-finops-storage'
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   confirm:
@@ -23,3 +38,17 @@ jobs:
         run: |
           gh workflow run teardown.yml \
             --repo devopsabcs-engineering/finops-demo-app-${{ matrix.app }}
+
+  teardown-storage:
+    needs: confirm
+    if: inputs.delete_storage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete storage account resource group
+        run: az group delete --name "${{ inputs.storage_rg_name }}" --yes --no-wait
