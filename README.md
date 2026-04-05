@@ -5,6 +5,12 @@ author: devopsabcs-engineering
 ms.date: 2026-03-28
 ---
 
+<p align="center">
+  <img src="assets/branding/logo-128.png" alt="Agentic Accelerator Framework" width="100">
+</p>
+
+<h1 align="center">FinOps Cost Governance Scanner</h1>
+
 ## Architecture
 
 ```mermaid
