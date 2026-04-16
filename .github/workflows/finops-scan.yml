@@ -112,7 +112,7 @@ jobs:
 
   cross-repo-upload:
     needs: [psrule-scan, checkov-scan, custodian-scan]
-    if: always() && (needs.psrule-scan.result == 'success' || needs.checkov-scan.result == 'success')
+    if: always() && (needs.psrule-scan.result == 'success' || needs.checkov-scan.result == 'success' || needs.custodian-scan.result == 'success')
     runs-on: ubuntu-latest
     strategy:
       matrix:
