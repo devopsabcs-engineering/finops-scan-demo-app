@@ -127,15 +127,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
         run: |
+          COMMIT_SHA=$(gh api repos/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/commits/main --jq '.sha')
           for sarif_file in reports/*.sarif; do
             if [ ! -f "$sarif_file" ]; then continue; fi
-            SARIF_CONTENT=$(gzip -c "$sarif_file" | base64 -w0)
-            COMMIT_SHA=$(gh api repos/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/commits/main --jq '.sha')
-            gh api \
-              --method POST \
+            gzip -c "$sarif_file" | base64 -w0 > /tmp/sarif_encoded.txt
+            jq -n --arg sha "$COMMIT_SHA" --arg ref "refs/heads/main" --rawfile sarif /tmp/sarif_encoded.txt \
+              '{commit_sha: $sha, ref: $ref, sarif: $sarif}' | \
+            gh api --method POST \
               repos/devopsabcs-engineering/finops-demo-app-${{ matrix.app }}/code-scanning/sarifs \
-              -f "commit_sha=$COMMIT_SHA" \
-              -f "ref=refs/heads/main" \
-              -f "sarif=$SARIF_CONTENT"
+              --input -
             echo "Uploaded $(basename $sarif_file) to finops-demo-app-${{ matrix.app }}"
           done
